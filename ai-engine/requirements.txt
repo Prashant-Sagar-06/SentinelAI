@@ -1,0 +1,13 @@
+# SentinelAI AI Engine Dependencies
+# ==================================
+# Install with: pip install -r requirements.txt
+
+# MongoDB connection
+pymongo==4.6.1
+
+# Data processing
+pandas==2.1.4
+numpy==1.26.3
+
+# Environment variable management
+python-dotenv==1.0.0
