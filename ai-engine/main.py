@@ -3,8 +3,12 @@ SentinelAI AI Engine - Main Entry Point
 ========================================
 
 This is the main entry script for the SentinelAI AI Engine.
-It demonstrates the log preprocessing pipeline that will feed into
-the anomaly detection autoencoder (to be implemented in future steps).
+It runs the complete log analysis pipeline including:
+1. Log ingestion from MongoDB
+2. Text preprocessing and cleaning
+3. TF-IDF vectorization
+4. Autoencoder training
+5. Anomaly detection
 
 === ENVIRONMENT SETUP ===
 
@@ -24,7 +28,7 @@ the anomaly detection autoencoder (to be implemented in future steps).
 
 3. Configure environment variables:
    
-   Copy .env.example to .env (or create .env) and set:
+   Create .env file and set:
        MONGODB_URI=mongodb://localhost:27017/sentinelai_logs
    
    For MongoDB Atlas, use:
@@ -34,25 +38,39 @@ the anomaly detection autoencoder (to be implemented in future steps).
    
        python main.py
 
-=== CURRENT PIPELINE ===
+=== PIPELINE STAGES ===
 
-1. Connect to MongoDB
-2. Fetch logs from the last N minutes
-3. Load logs into pandas DataFrame
-4. Clean and normalize log messages
-5. Display statistics and sample data
+Stage 1: Data Ingestion
+    - Connect to MongoDB
+    - Fetch logs from specified time window
+    - Load into pandas DataFrame
 
-=== FUTURE STEPS (NOT IMPLEMENTED YET) ===
+Stage 2: Preprocessing
+    - Clean and normalize log messages
+    - Remove noise (numbers, special characters)
+    - Prepare text for vectorization
 
-- Tokenization and vectorization of log messages
-- Autoencoder model for learning normal log patterns
-- Anomaly detection based on reconstruction error
-- Real-time streaming analysis
-- API endpoints for integration with dashboard
+Stage 3: Vectorization
+    - Convert text to TF-IDF vectors
+    - Create numerical representation for ML
+
+Stage 4: Anomaly Detection
+    - Train autoencoder on log vectors
+    - Compute reconstruction errors
+    - Flag anomalous logs based on threshold
+
+Stage 5: Results
+    - Display anomaly statistics
+    - Show sample anomalous log messages
 """
 
 import os
 import sys
+import warnings
+
+# Suppress TensorFlow warnings for cleaner output
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+warnings.filterwarnings('ignore', category=DeprecationWarning)
 
 # Add the project root to Python path for imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -62,8 +80,13 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
+import numpy as np
+import pandas as pd
+
 from src.preprocessing.load_logs import load_logs_as_dataframe
 from src.preprocessing.clean_logs import clean_logs, get_cleaning_stats
+from src.preprocessing.vectorize_logs import vectorize_logs
+from src.analysis.anomaly_detection import run_anomaly_detection
 from src.utils.db import close_connection
 
 
@@ -71,90 +94,178 @@ def main():
     """
     Main entry point for the SentinelAI AI Engine.
     
-    This function orchestrates the log preprocessing pipeline:
-    1. Loads raw logs from MongoDB
-    2. Cleans and normalizes the data
-    3. Displays statistics and samples for verification
+    Orchestrates the complete anomaly detection pipeline:
+    1. Load logs from MongoDB
+    2. Clean and preprocess
+    3. Vectorize with TF-IDF
+    4. Train autoencoder and detect anomalies
+    5. Display results
     """
-    print("=" * 60)
-    print("SentinelAI AI Engine - Log Preprocessing Pipeline")
-    print("=" * 60)
+    print("=" * 70)
+    print("   SentinelAI AI Engine - Log Anomaly Detection Pipeline")
+    print("=" * 70)
     print()
     
-    # Configuration
-    # Fetch logs from the last 60 minutes (adjust as needed)
-    LOOKBACK_MINUTES = 60
+    # ==================== CONFIGURATION ====================
+    LOOKBACK_MINUTES = 1440      # Time window for log fetching (24 hours)
+    TRAINING_EPOCHS = 50         # Autoencoder training epochs
+    ANOMALY_PERCENTILE = 95.0    # Threshold percentile (95 = top 5% are anomalies)
+    MIN_LOGS_REQUIRED = 10       # Minimum logs needed for training
     
-    print(f"[CONFIG] Looking back {LOOKBACK_MINUTES} minutes for logs")
+    print("[CONFIG] Pipeline Configuration:")
+    print(f"         - Lookback window: {LOOKBACK_MINUTES} minutes")
+    print(f"         - Training epochs: {TRAINING_EPOCHS}")
+    print(f"         - Anomaly threshold: {ANOMALY_PERCENTILE}th percentile")
     print()
     
-    # Step 1: Load logs from MongoDB into DataFrame
-    print("[STEP 1] Loading logs from MongoDB...")
-    print("-" * 40)
+    # ==================== STAGE 1: DATA INGESTION ====================
+    print("=" * 70)
+    print("[STAGE 1] Data Ingestion - Loading logs from MongoDB")
+    print("=" * 70)
+    
     raw_df = load_logs_as_dataframe(minutes=LOOKBACK_MINUTES)
-    print()
     
-    # Check if we have any data to process
     if raw_df.empty:
-        print("[WARN] No logs found. Please ensure:")
-        print("  1. MongoDB is running")
-        print("  2. MONGODB_URI is correctly set in .env")
-        print("  3. The Node.js demo app has generated some logs")
-        print()
-        print("Exiting...")
+        print("\n[ERROR] No logs found. Please ensure:")
+        print("        1. MongoDB is running and accessible")
+        print("        2. MONGODB_URI is correctly configured in .env")
+        print("        3. The demo app has generated logs recently")
+        print("\nExiting pipeline.")
         close_connection()
         return
     
-    # Step 2: Clean and normalize log messages
-    print("[STEP 2] Cleaning and normalizing logs...")
-    print("-" * 40)
+    print(f"\n[INFO] Loaded {len(raw_df)} logs from database")
+    print()
+    
+    # ==================== STAGE 2: PREPROCESSING ====================
+    print("=" * 70)
+    print("[STAGE 2] Preprocessing - Cleaning and normalizing logs")
+    print("=" * 70)
+    
     cleaned_df = clean_logs(raw_df)
-    print()
-    
-    # Step 3: Display cleaning statistics
-    print("[STEP 3] Preprocessing Statistics")
-    print("-" * 40)
     stats = get_cleaning_stats(raw_df, cleaned_df)
-    print(f"  Original logs:  {stats['original_count']}")
-    print(f"  Cleaned logs:   {stats['cleaned_count']}")
-    print(f"  Removed logs:   {stats['removed_count']}")
-    print(f"  Removal rate:   {stats['removal_rate']}%")
-    print()
     
-    # Step 4: Display sample of cleaned data
-    print("[STEP 4] Sample of Cleaned Logs")
-    print("-" * 40)
+    print(f"\n[INFO] Preprocessing Results:")
+    print(f"       - Original logs: {stats['original_count']}")
+    print(f"       - Cleaned logs: {stats['cleaned_count']}")
+    print(f"       - Removed: {stats['removed_count']} ({stats['removal_rate']}%)")
     
-    if not cleaned_df.empty:
-        # Show first 5 rows
-        sample_size = min(5, len(cleaned_df))
-        print(f"Showing first {sample_size} cleaned log messages:\n")
-        
-        for idx, row in cleaned_df.head(sample_size).iterrows():
-            level = row.get("level", "unknown").upper()
-            message = row.get("message", "")
-            timestamp = row.get("timestamp", "")
-            
-            # Truncate long messages for display
-            display_msg = message[:80] + "..." if len(message) > 80 else message
-            
-            print(f"  [{level}] {display_msg}")
-        
-        print()
-        
-        # Show log level distribution
-        print("Log Level Distribution:")
-        level_counts = cleaned_df["level"].value_counts()
-        for level, count in level_counts.items():
-            percentage = round(count / len(cleaned_df) * 100, 1)
-            print(f"  {level.upper()}: {count} ({percentage}%)")
+    if len(cleaned_df) < MIN_LOGS_REQUIRED:
+        print(f"\n[ERROR] Insufficient data for training. Need at least {MIN_LOGS_REQUIRED} logs.")
+        print(f"        Current count: {len(cleaned_df)}")
+        print("\nExiting pipeline.")
+        close_connection()
+        return
     
     print()
-    print("=" * 60)
-    print("Preprocessing complete. Ready for AI model training.")
-    print("=" * 60)
     
-    # Cleanup
+    # ==================== STAGE 3: VECTORIZATION ====================
+    print("=" * 70)
+    print("[STAGE 3] Vectorization - Converting text to TF-IDF vectors")
+    print("=" * 70)
+    
+    vectors, vectorizer = vectorize_logs(cleaned_df, message_column="message")
+    
+    if vectors.size == 0:
+        print("\n[ERROR] Vectorization failed - no vectors produced")
+        close_connection()
+        return
+    
+    print(f"\n[INFO] Vectorization Results:")
+    print(f"       - Vector shape: {vectors.shape}")
+    print(f"       - Vocabulary size: {vectorizer.get_vector_dimension()}")
+    print()
+    
+    # ==================== STAGE 4: ANOMALY DETECTION ====================
+    print("=" * 70)
+    print("[STAGE 4] Anomaly Detection - Training autoencoder")
+    print("=" * 70)
+    print()
+    
+    # Run the anomaly detection pipeline
+    detector, results, summary = run_anomaly_detection(
+        vectors=vectors,
+        epochs=TRAINING_EPOCHS,
+        percentile=ANOMALY_PERCENTILE,
+        verbose=1  # Show training progress
+    )
+    
+    # ==================== STAGE 5: RESULTS ====================
+    print()
+    print("=" * 70)
+    print("[STAGE 5] Results - Anomaly Detection Summary")
+    print("=" * 70)
+    
+    print(f"\n{'─' * 50}")
+    print("DETECTION STATISTICS")
+    print(f"{'─' * 50}")
+    print(f"  Total logs processed:    {summary['total_logs']}")
+    print(f"  Normal logs:             {summary['normal_count']}")
+    print(f"  Anomalous logs:          {summary['anomaly_count']}")
+    print(f"  Anomaly rate:            {summary['anomaly_rate'] * 100:.2f}%")
+    print(f"{'─' * 50}")
+    print(f"  Threshold:               {summary['threshold']:.6f}")
+    print(f"  Mean reconstruction error: {summary['mean_error']:.6f}")
+    print(f"  Max reconstruction error:  {summary['max_error']:.6f}")
+    print(f"{'─' * 50}")
+    
+    # Add anomaly flags to DataFrame for analysis
+    cleaned_df = cleaned_df.copy()
+    cleaned_df['reconstruction_error'] = results['errors']
+    cleaned_df['is_anomaly'] = results['is_anomaly']
+    cleaned_df['anomaly_score'] = results['anomaly_scores']
+    
+    # Display anomalous logs
+    anomalous_logs = cleaned_df[cleaned_df['is_anomaly'] == True]
+    
+    if len(anomalous_logs) > 0:
+        print(f"\n{'─' * 50}")
+        print("SAMPLE ANOMALOUS LOGS")
+        print(f"{'─' * 50}")
+        
+        # Show top anomalies (highest reconstruction error)
+        top_anomalies = anomalous_logs.nlargest(5, 'reconstruction_error')
+        
+        for idx, (_, row) in enumerate(top_anomalies.iterrows(), 1):
+            level = str(row.get('level', 'unknown')).upper()
+            message = row.get('message', '')[:70]
+            score = row.get('anomaly_score', 0)
+            error = row.get('reconstruction_error', 0)
+            
+            print(f"\n  Anomaly #{idx}:")
+            print(f"    Level:   [{level}]")
+            print(f"    Message: {message}...")
+            print(f"    Score:   {score:.3f} (error: {error:.6f})")
+        
+        # Show log level distribution for anomalies
+        print(f"\n{'─' * 50}")
+        print("ANOMALY LOG LEVEL DISTRIBUTION")
+        print(f"{'─' * 50}")
+        
+        level_dist = anomalous_logs['level'].value_counts()
+        for level, count in level_dist.items():
+            pct = count / len(anomalous_logs) * 100
+            print(f"  {level.upper()}: {count} ({pct:.1f}%)")
+    else:
+        print("\n[INFO] No anomalies detected in the current log batch.")
+        print("       This could mean:")
+        print("       - All logs are normal")
+        print("       - Threshold is too high")
+        print("       - More diverse log data is needed for training")
+    
+    # ==================== CLEANUP ====================
+    print()
+    print("=" * 70)
+    print("   Pipeline Complete")
+    print("=" * 70)
+    print()
+    print("[INFO] Next steps:")
+    print("       - Implement root cause analysis for anomalies")
+    print("       - Save trained model for production use")
+    print("       - Create API endpoints for real-time detection")
+    print("       - Integrate with dashboard for visualization")
+    print()
+    
     close_connection()
 
 
