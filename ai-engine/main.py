@@ -87,6 +87,8 @@ from src.preprocessing.load_logs import load_logs_as_dataframe
 from src.preprocessing.clean_logs import clean_logs, get_cleaning_stats
 from src.preprocessing.vectorize_logs import vectorize_logs
 from src.analysis.anomaly_detection import run_anomaly_detection
+from src.analysis.root_cause_analysis import analyze_root_causes
+from src.analysis.explanation_utils import format_explanation_report
 from src.utils.db import close_connection
 
 
@@ -252,6 +254,54 @@ def main():
         print("       - All logs are normal")
         print("       - Threshold is too high")
         print("       - More diverse log data is needed for training")
+    
+    # ==================== STAGE 6: ROOT CAUSE ANALYSIS ====================
+    if len(anomalous_logs) > 0:
+        print()
+        print("=" * 70)
+        print("[STAGE 6] Root Cause Analysis - Identifying underlying causes")
+        print("=" * 70)
+        
+        root_causes, _ = analyze_root_causes(cleaned_df, time_window_minutes=2)
+        
+        if len(root_causes) > 0:
+            print(f"\n{'─' * 50}")
+            print("ROOT CAUSE ANALYSIS RESULTS")
+            print(f"{'─' * 50}")
+            print(f"Identified {len(root_causes)} root cause(s):\n")
+            
+            for idx, root_cause in enumerate(root_causes, 1):
+                print(f"\n{idx}. ROOT CAUSE #{idx}")
+                print(f"   {'─' * 46}")
+                
+                # Display structured data
+                service = root_cause.get('root_cause_service', 'unknown')
+                confidence = root_cause.get('confidence_score', 0)
+                affected = root_cause.get('affected_services', [])
+                count = root_cause.get('anomaly_count', 0)
+                
+                print(f"   Service:         {service}")
+                print(f"   Confidence:      {confidence * 100:.1f}%")
+                print(f"   Affected services: {', '.join(affected) if affected else 'N/A'}")
+                print(f"   Anomaly count:   {count}")
+                print(f"\n   Root Cause Message:")
+                message = root_cause.get('root_cause_message', 'Unknown cause')
+                for line in message.split('\n'):
+                    print(f"   {line}")
+                
+                # Display explanations if available
+                explanations = root_cause.get('explanations', {})
+                if explanations:
+                    print(f"\n   Analysis:")
+                    if 'root_cause' in explanations:
+                        print(f"   - Root Cause: {explanations['root_cause'][:100]}...")
+                    if 'timeline' in explanations:
+                        print(f"   - Timeline: {explanations['timeline'][:100]}...")
+        else:
+            print("\n[INFO] No root causes could be identified.")
+            print("       This may indicate isolated anomalies rather than cascading failures.")
+    else:
+        print("\n[STAGE 6 SKIPPED] Root cause analysis requires at least one anomaly.")
     
     # ==================== CLEANUP ====================
     print()

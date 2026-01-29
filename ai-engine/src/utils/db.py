@@ -49,7 +49,8 @@ def get_client() -> Optional[MongoClient]:
     
     try:
         # Create client with a reasonable timeout for AI workloads
-        _client = MongoClient(mongodb_uri, serverSelectionTimeoutMS=5000)
+        # Increased timeout for MongoDB Atlas connections
+        _client = MongoClient(mongodb_uri, serverSelectionTimeoutMS=30000)
         
         # Verify connection by pinging the server
         _client.admin.command("ping")
