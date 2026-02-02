@@ -110,7 +110,7 @@ def main():
     print()
     
     # ==================== CONFIGURATION ====================
-    LOOKBACK_MINUTES = 1440      # Time window for log fetching (24 hours)
+    LOOKBACK_MINUTES = 525600 * 20  # Time window for log fetching (20 years - includes historical HDFS logs)
     TRAINING_EPOCHS = 50         # Autoencoder training epochs
     ANOMALY_PERCENTILE = 95.0    # Threshold percentile (95 = top 5% are anomalies)
     MIN_LOGS_REQUIRED = 10       # Minimum logs needed for training
