@@ -1,0 +1,102 @@
+/**
+ * SentinelAI Dashboard - Loading Spinner Styles
+ */
+
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  gap: 1rem;
+}
+
+.loading-spinner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Size variations */
+.loading-sm .loading-spinner {
+  width: 24px;
+  height: 24px;
+}
+
+.loading-md .loading-spinner {
+  width: 40px;
+  height: 40px;
+}
+
+.loading-lg .loading-spinner {
+  width: 60px;
+  height: 60px;
+}
+
+.spinner-ring {
+  position: absolute;
+  border: 3px solid transparent;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 1.2s linear infinite;
+}
+
+.loading-sm .spinner-ring {
+  width: 24px;
+  height: 24px;
+  border-width: 2px;
+}
+
+.loading-md .spinner-ring {
+  width: 40px;
+  height: 40px;
+}
+
+.loading-lg .spinner-ring {
+  width: 60px;
+  height: 60px;
+  border-width: 4px;
+}
+
+.spinner-ring:nth-child(1) {
+  animation-delay: 0s;
+  opacity: 1;
+}
+
+.spinner-ring:nth-child(2) {
+  animation-delay: 0.15s;
+  opacity: 0.7;
+  width: calc(100% - 8px);
+  height: calc(100% - 8px);
+}
+
+.spinner-ring:nth-child(3) {
+  animation-delay: 0.3s;
+  opacity: 0.4;
+  width: calc(100% - 16px);
+  height: calc(100% - 16px);
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.loading-message {
+  color: #6b7280;
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+.loading-sm .loading-message {
+  font-size: 0.75rem;
+}
+
+.loading-lg .loading-message {
+  font-size: 1rem;
+}

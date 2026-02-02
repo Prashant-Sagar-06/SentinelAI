@@ -90,6 +90,7 @@ from src.analysis.anomaly_detection import run_anomaly_detection
 from src.analysis.root_cause_analysis import analyze_root_causes
 from src.analysis.explanation_utils import format_explanation_report
 from src.utils.db import close_connection
+from src.utils.persist import persist_analysis_results
 
 
 def main():
@@ -256,6 +257,9 @@ def main():
         print("       - More diverse log data is needed for training")
     
     # ==================== STAGE 6: ROOT CAUSE ANALYSIS ====================
+    # Initialize root_causes for use in stage 7 (persistence)
+    root_causes = []
+    
     if len(anomalous_logs) > 0:
         print()
         print("=" * 70)
@@ -303,16 +307,47 @@ def main():
     else:
         print("\n[STAGE 6 SKIPPED] Root cause analysis requires at least one anomaly.")
     
+    # ==================== STAGE 7: PERSISTENCE ====================
+    # WHY PERSIST?
+    # - Enable other systems (APIs, dashboards) to query results
+    # - Track anomalies and root causes over time
+    # - Support alerting and notification systems
+    # - Provide audit trail for detected issues
+    
+    print()
+    print("=" * 70)
+    print("[STAGE 7] Persistence - Saving results to MongoDB")
+    print("=" * 70)
+    
+    # Persist results only if we have data to save
+    if len(anomalous_logs) > 0 or len(root_causes) > 0:
+        persist_results = persist_analysis_results(
+            anomaly_df=cleaned_df,
+            root_causes=root_causes
+        )
+        
+        print(f"\n{'─' * 50}")
+        print("PERSISTENCE SUMMARY")
+        print(f"{'─' * 50}")
+        print(f"  Anomalies persisted:    {persist_results['anomalies'][0]}")
+        print(f"  Root causes persisted:  {persist_results['root_causes'][0]}")
+        print(f"{'─' * 50}")
+    else:
+        print("\n[STAGE 7 SKIPPED] No anomalies or root causes to persist.")
+    
     # ==================== CLEANUP ====================
     print()
     print("=" * 70)
     print("   Pipeline Complete")
     print("=" * 70)
     print()
+    print("[INFO] Results are now persisted to MongoDB:")
+    print("       - 'anomalies' collection: Detected anomalous logs")
+    print("       - 'root_causes' collection: Root cause analysis insights")
+    print()
     print("[INFO] Next steps:")
-    print("       - Implement root cause analysis for anomalies")
-    print("       - Save trained model for production use")
-    print("       - Create API endpoints for real-time detection")
+    print("       - Query results via MongoDB Compass or APIs")
+    print("       - Create API endpoints for real-time access")
     print("       - Integrate with dashboard for visualization")
     print()
     

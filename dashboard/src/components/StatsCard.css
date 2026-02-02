@@ -1,0 +1,78 @@
+/**
+ * SentinelAI Dashboard - Stats Card Styles
+ */
+
+.stats-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.25rem;
+  background: white;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.stats-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.stats-icon {
+  font-size: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  background: #f3f4f6;
+}
+
+.stats-content {
+  flex: 1;
+}
+
+.stats-title {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #6b7280;
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.stats-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #111827;
+  margin: 0.25rem 0;
+  line-height: 1.2;
+}
+
+.stats-subtitle {
+  font-size: 0.75rem;
+  color: #9ca3af;
+}
+
+/* Variants */
+.stats-primary .stats-icon {
+  background: #dbeafe;
+  color: #2563eb;
+}
+
+.stats-success .stats-icon {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.stats-warning .stats-icon {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.stats-danger .stats-icon {
+  background: #fee2e2;
+  color: #dc2626;
+}
