@@ -1,39 +1,79 @@
 /**
  * SentinelAI Dashboard - Score Badge Styles
+ * Neon severity indicators
  */
 
 .score-badge {
   display: inline-flex;
   align-items: center;
-  padding: 0.25rem 0.75rem;
+  padding: 0.35rem 0.85rem;
   border-radius: 9999px;
   font-size: 0.75rem;
   font-weight: 600;
   white-space: nowrap;
+  border: 1px solid transparent;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.score-badge::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+  animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+  0% { left: -100%; }
+  100% { left: 100%; }
 }
 
 .score-label {
   font-weight: 400;
-  margin-right: 0.25rem;
+  margin-right: 0.35rem;
+  opacity: 0.8;
 }
 
-/* Severity colors */
+/* Severity colors with neon glow */
 .severity-low {
-  background: #dcfce7;
-  color: #166534;
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--accent-green);
+  border-color: rgba(16, 185, 129, 0.3);
+  box-shadow: 0 0 10px var(--accent-green-glow), inset 0 0 10px rgba(16, 185, 129, 0.1);
 }
 
 .severity-medium {
-  background: #fef9c3;
-  color: #854d0e;
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--accent-yellow);
+  border-color: rgba(245, 158, 11, 0.3);
+  box-shadow: 0 0 10px var(--accent-yellow-glow), inset 0 0 10px rgba(245, 158, 11, 0.1);
 }
 
 .severity-high {
-  background: #fed7aa;
-  color: #9a3412;
+  background: rgba(249, 115, 22, 0.15);
+  color: #f97316;
+  border-color: rgba(249, 115, 22, 0.3);
+  box-shadow: 0 0 10px rgba(249, 115, 22, 0.4), inset 0 0 10px rgba(249, 115, 22, 0.1);
 }
 
 .severity-critical {
-  background: #fecaca;
-  color: #991b1b;
+  background: rgba(239, 68, 68, 0.2);
+  color: var(--accent-red);
+  border-color: rgba(239, 68, 68, 0.4);
+  box-shadow: 0 0 15px var(--accent-red-glow), inset 0 0 15px rgba(239, 68, 68, 0.1);
+  animation: criticalPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes criticalPulse {
+  0%, 100% { 
+    box-shadow: 0 0 15px var(--accent-red-glow), inset 0 0 15px rgba(239, 68, 68, 0.1);
+  }
+  50% { 
+    box-shadow: 0 0 25px var(--accent-red-glow), inset 0 0 20px rgba(239, 68, 68, 0.2);
+  }
 }

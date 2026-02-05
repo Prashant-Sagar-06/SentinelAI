@@ -75,26 +75,26 @@ export const DashboardPage = () => {
           <div className="stats-grid">
             <StatsCard 
               title="Total Anomalies"
-              value={stats?.anomalies?.total_count || 0}
+              value={stats?.anomalies?.total_anomalies || 0}
               icon="⚠️"
               variant="warning"
             />
             <StatsCard 
               title="Root Causes"
-              value={stats?.root_causes?.total_count || 0}
+              value={stats?.root_causes?.total_root_causes || 0}
               icon="🔍"
               variant="primary"
             />
             <StatsCard 
               title="Services Affected"
-              value={stats?.anomalies?.services_count || 0}
+              value={Object.keys(stats?.anomalies?.by_service || {}).length}
               icon="🖥️"
               variant="danger"
             />
             <StatsCard 
               title="Avg Confidence"
-              value={stats?.root_causes?.avg_confidence 
-                ? `${(stats.root_causes.avg_confidence * 100).toFixed(0)}%` 
+              value={stats?.root_causes?.average_confidence 
+                ? `${(stats.root_causes.average_confidence * 100).toFixed(0)}%` 
                 : 'N/A'}
               icon="📊"
               variant="success"

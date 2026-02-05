@@ -1,5 +1,6 @@
 /**
  * SentinelAI Dashboard - Error Message Styles
+ * Alert system interface
  */
 
 .error-container {
@@ -7,19 +8,60 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 2rem;
+  padding: 2.5rem;
   text-align: center;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  border-radius: 8px;
+  background: linear-gradient(145deg, rgba(239, 68, 68, 0.1), rgba(239, 68, 68, 0.05));
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 16px;
   margin: 1rem;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 
+    0 4px 24px rgba(239, 68, 68, 0.1),
+    inset 0 0 60px rgba(239, 68, 68, 0.05);
+}
+
+.error-container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent-red), transparent);
+  animation: errorScan 2s linear infinite;
+}
+
+@keyframes errorScan {
+  0% { opacity: 0.3; }
+  50% { opacity: 1; }
+  100% { opacity: 0.3; }
+}
+
+.error-container::after {
+  content: '⚠ SYSTEM ALERT';
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  color: var(--accent-red);
+  opacity: 0.7;
 }
 
 .error-icon {
-  width: 48px;
-  height: 48px;
-  color: #dc2626;
-  margin-bottom: 1rem;
+  width: 56px;
+  height: 56px;
+  color: var(--accent-red);
+  margin-bottom: 1.25rem;
+  filter: drop-shadow(0 0 15px var(--accent-red-glow));
+  animation: errorPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes errorPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
 }
 
 .error-icon svg {
@@ -28,36 +70,61 @@
 }
 
 .error-title {
-  color: #991b1b;
-  font-size: 1.125rem;
-  font-weight: 600;
-  margin: 0 0 0.5rem 0;
+  color: var(--accent-red);
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0 0 0.75rem 0;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  text-shadow: 0 0 20px var(--accent-red-glow);
 }
 
 .error-message {
-  color: #7f1d1d;
-  font-size: 0.875rem;
-  margin: 0 0 1rem 0;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin: 0 0 1.5rem 0;
   max-width: 400px;
+  line-height: 1.6;
 }
 
 .error-retry-btn {
-  padding: 0.5rem 1.5rem;
-  background: #dc2626;
-  color: white;
-  border: none;
-  border-radius: 6px;
+  position: relative;
+  padding: 0.75rem 2rem;
+  background: transparent;
+  color: var(--accent-red);
+  border: 1px solid var(--accent-red);
+  border-radius: 8px;
   font-size: 0.875rem;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s ease;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  overflow: hidden;
+}
+
+.error-retry-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(239, 68, 68, 0.2), transparent);
+  transition: left 0.4s ease;
 }
 
 .error-retry-btn:hover {
-  background: #b91c1c;
+  background: var(--accent-red);
+  color: var(--bg-primary);
+  box-shadow: 0 0 25px var(--accent-red-glow);
+}
+
+.error-retry-btn:hover::before {
+  left: 100%;
 }
 
 .error-retry-btn:focus {
-  outline: 2px solid #dc2626;
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-red), 0 0 25px var(--accent-red-glow);
 }

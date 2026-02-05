@@ -1,0 +1,200 @@
+/**
+ * SentinelAI Dashboard - Remediation Guidance Styles
+ * ==================================================
+ * 
+ * Professional, clean styling for remediation guidance display.
+ * No animations - engineer-focused design.
+ */
+
+.remediation-guidance {
+  background: #f8f9fa;
+  border: 1px solid #e8eaed;
+  border-radius: 4px;
+  padding: 16px;
+  margin: 12px 0;
+}
+
+.remediation-guidance.empty {
+  padding: 12px 16px;
+  text-align: center;
+}
+
+.remediation-guidance.empty .no-remediation {
+  color: #9ca3af;
+  font-size: 13px;
+  margin: 0;
+}
+
+/* Header section */
+.remediation-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 12px;
+}
+
+.remediation-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.remediation-title h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.remediation-confidence {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.remediation-confidence .label {
+  color: #6b7280;
+}
+
+.remediation-confidence .value {
+  font-weight: 600;
+  color: #059669;
+}
+
+/* Priority badges */
+.priority-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.priority-badge.priority-critical {
+  background-color: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+}
+
+.priority-badge.priority-high {
+  background-color: #fed7aa;
+  color: #92400e;
+  border: 1px solid #fdba74;
+}
+
+.priority-badge.priority-medium {
+  background-color: #fef3c7;
+  color: #78350f;
+  border: 1px solid #fcd34d;
+}
+
+.priority-badge.priority-low {
+  background-color: #d1fae5;
+  color: #065f46;
+  border: 1px solid #6ee7b7;
+}
+
+/* Body content */
+.remediation-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.remediation-body > div {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.remediation-body label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #4b5563;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Issue description */
+.issue-description p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #374151;
+}
+
+/* Fix steps list */
+.fix-steps {
+  margin: 4px 0;
+}
+
+.steps-list {
+  margin: 6px 0 0 20px;
+  padding: 0;
+}
+
+.step-item {
+  margin-bottom: 6px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #374151;
+}
+
+.step-item::marker {
+  font-weight: 600;
+  color: #6366f1;
+}
+
+/* Estimated time */
+.estimated-time {
+  padding: 8px 0;
+  border-top: 1px solid #e5e7eb;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.time-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+/* Category info */
+.category-info {
+  margin-top: 4px;
+}
+
+.category-label {
+  display: inline-block;
+  font-size: 11px;
+  color: #6b7280;
+  background-color: #f3f4f6;
+  padding: 3px 6px;
+  border-radius: 3px;
+  font-family: 'Monaco', 'Courier New', monospace;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .remediation-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .remediation-confidence {
+    width: 100%;
+  }
+
+  .remediation-guidance {
+    padding: 12px;
+  }
+
+  .step-item {
+    font-size: 12px;
+  }
+}

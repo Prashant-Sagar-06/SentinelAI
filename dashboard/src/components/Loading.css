@@ -1,5 +1,6 @@
 /**
  * SentinelAI Dashboard - Loading Spinner Styles
+ * Holographic loader
  */
 
 .loading-container {
@@ -7,8 +8,24 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 2rem;
-  gap: 1rem;
+  padding: 3rem;
+  gap: 1.5rem;
+  position: relative;
+}
+
+.loading-container::before {
+  content: '';
+  position: absolute;
+  width: 150px;
+  height: 150px;
+  background: radial-gradient(circle, var(--accent-cyan-glow), transparent 70%);
+  opacity: 0.3;
+  animation: loadingPulse 2s ease-in-out infinite;
+}
+
+@keyframes loadingPulse {
+  0%, 100% { transform: scale(1); opacity: 0.3; }
+  50% { transform: scale(1.2); opacity: 0.5; }
 }
 
 .loading-spinner {
@@ -20,62 +37,77 @@
 
 /* Size variations */
 .loading-sm .loading-spinner {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
 }
 
 .loading-md .loading-spinner {
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
 }
 
 .loading-lg .loading-spinner {
-  width: 60px;
-  height: 60px;
+  width: 72px;
+  height: 72px;
 }
 
 .spinner-ring {
   position: absolute;
   border: 3px solid transparent;
-  border-top-color: #3b82f6;
+  border-top-color: var(--accent-cyan);
+  border-right-color: var(--accent-purple);
   border-radius: 50%;
-  animation: spin 1.2s linear infinite;
+  animation: techSpin 1s linear infinite;
+  box-shadow: 
+    0 0 15px var(--accent-cyan-glow),
+    inset 0 0 15px var(--accent-purple-glow);
+}
+
+@keyframes techSpin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
 .loading-sm .spinner-ring {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   border-width: 2px;
 }
 
 .loading-md .spinner-ring {
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
 }
 
 .loading-lg .spinner-ring {
-  width: 60px;
-  height: 60px;
+  width: 72px;
+  height: 72px;
   border-width: 4px;
 }
 
 .spinner-ring:nth-child(1) {
   animation-delay: 0s;
+  animation-duration: 1s;
   opacity: 1;
 }
 
 .spinner-ring:nth-child(2) {
-  animation-delay: 0.15s;
-  opacity: 0.7;
-  width: calc(100% - 8px);
-  height: calc(100% - 8px);
+  animation-delay: 0.1s;
+  animation-duration: 1.2s;
+  animation-direction: reverse;
+  opacity: 0.8;
+  width: calc(100% - 10px);
+  height: calc(100% - 10px);
+  border-top-color: var(--accent-purple);
+  border-right-color: var(--accent-cyan);
 }
 
 .spinner-ring:nth-child(3) {
-  animation-delay: 0.3s;
-  opacity: 0.4;
-  width: calc(100% - 16px);
-  height: calc(100% - 16px);
+  animation-delay: 0.2s;
+  animation-duration: 0.8s;
+  opacity: 0.6;
+  width: calc(100% - 20px);
+  height: calc(100% - 20px);
 }
 
 @keyframes spin {
@@ -88,9 +120,18 @@
 }
 
 .loading-message {
-  color: #6b7280;
+  color: var(--text-secondary);
   font-size: 0.875rem;
   margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 500;
+  animation: textPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes textPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
 
 .loading-sm .loading-message {

@@ -30,6 +30,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from src.utils.db import get_database
+from src.analysis.remediation_engine import RemediationEngine
 
 
 # Collection names (matching persist.py)
@@ -56,6 +57,48 @@ def _clean_document(doc: Dict[str, Any]) -> Dict[str, Any]:
     cleaned = {k: v for k, v in doc.items() if k != '_id'}
     
     return cleaned
+
+
+def _enrich_root_cause_with_remediation(
+    root_cause: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Enrich a root cause document with remediation guidance.
+    
+    Uses the RemediationEngine to generate structured fix steps
+    based on the root cause details.
+    
+    Args:
+        root_cause: Root cause document from MongoDB
+    
+    Returns:
+        Root cause document with remediation field added
+    """
+    try:
+        engine = RemediationEngine()
+        
+        # Extract root cause details
+        service = root_cause.get("root_cause_service", "unknown")
+        message = root_cause.get("root_cause_message", "")
+        confidence = root_cause.get("confidence_score")
+        
+        # Generate remediation
+        remediation_result = engine.generate_remediation(
+            root_cause_service=service,
+            root_cause_message=message,
+            root_cause_confidence=confidence
+        )
+        
+        # Convert remediation to dict and add to root cause
+        root_cause["remediation"] = remediation_result.to_dict()
+        
+    except Exception as e:
+        # If remediation generation fails, continue without it
+        # This ensures partial failures don't break the entire response
+        print(f"[REPOSITORY] Warning: Failed to generate remediation: {e}")
+        root_cause["remediation"] = None
+    
+    return root_cause
 
 
 async def get_recent_anomalies(
@@ -134,13 +177,15 @@ async def get_latest_root_causes(
     Returns root causes sorted by detected_at descending (most recent first),
     then by confidence_score descending (highest confidence first).
     
+    Automatically enriches each root cause with remediation guidance.
+    
     Args:
         limit: Maximum number of results to return (default: 5)
         min_confidence: Optional minimum confidence score filter
         service: Optional filter by root cause service
     
     Returns:
-        List of root cause documents (cleaned for API response)
+        List of root cause documents (cleaned for API response) with remediation
     
     Handles:
         - Empty collection (returns [])
@@ -178,6 +223,10 @@ async def get_latest_root_causes(
             cleaned.setdefault("anomaly_count", 0)
             cleaned.setdefault("confidence_level", "MEDIUM")
             cleaned.setdefault("explanations", {})
+            
+            # Enrich with remediation guidance
+            cleaned = _enrich_root_cause_with_remediation(cleaned)
+            
             root_causes.append(cleaned)
         
         return root_causes

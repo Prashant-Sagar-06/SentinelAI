@@ -1,10 +1,11 @@
 /**
  * SentinelAI Dashboard - Anomalies Page Styles
+ * Threat detection interface
  */
 
 .anomalies-page {
   padding: 2rem;
-  max-width: 1400px;
+  max-width: 1500px;
   margin: 0 auto;
 }
 
@@ -12,115 +13,178 @@
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 1.5rem;
+  margin-bottom: 2rem;
 }
 
 .page-header h1 {
-  font-size: 1.75rem;
+  font-size: 2rem;
   font-weight: 700;
-  color: #111827;
+  color: var(--text-primary);
   margin: 0 0 0.5rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.page-header h1::before {
+  content: '//';
+  color: var(--accent-cyan);
+  font-family: 'JetBrains Mono', monospace;
+  opacity: 0.6;
 }
 
 .page-header p {
-  color: #6b7280;
+  color: var(--text-muted);
   margin: 0;
+  padding-left: 2rem;
 }
 
 .refresh-btn {
-  padding: 0.625rem 1.25rem;
-  background: #3b82f6;
-  color: white;
-  border: none;
+  position: relative;
+  padding: 0.75rem 1.5rem;
+  background: transparent;
+  color: var(--accent-cyan);
+  border: 1px solid var(--accent-cyan);
   border-radius: 8px;
   font-size: 0.875rem;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s ease;
+  transition: all 0.3s ease;
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  overflow: hidden;
+}
+
+.refresh-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(6, 182, 212, 0.2), transparent);
+  transition: left 0.4s ease;
 }
 
 .refresh-btn:hover:not(:disabled) {
-  background: #2563eb;
+  background: var(--accent-cyan);
+  color: var(--bg-primary);
+  box-shadow: 0 0 25px var(--accent-cyan-glow);
+}
+
+.refresh-btn:hover:not(:disabled)::before {
+  left: 100%;
 }
 
 .refresh-btn:disabled {
-  background: #9ca3af;
+  border-color: var(--text-muted);
+  color: var(--text-muted);
   cursor: not-allowed;
+  opacity: 0.5;
 }
 
-/* Filters */
+/* Filters - Tech panel */
 .filters-section {
   display: flex;
   flex-wrap: wrap;
   gap: 1.5rem;
-  padding: 1.25rem;
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  margin-bottom: 1.5rem;
+  padding: 1.5rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  margin-bottom: 2rem;
+  position: relative;
+  box-shadow: var(--shadow-card);
+}
+
+.filters-section::before {
+  content: 'FILTERS';
+  position: absolute;
+  top: -10px;
+  left: 20px;
+  background: var(--bg-primary);
+  color: var(--accent-cyan);
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  padding: 0 0.75rem;
 }
 
 .filter-group {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  min-width: 140px;
+  min-width: 160px;
 }
 
 .filter-group label {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   font-weight: 600;
-  color: #4b5563;
+  color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.1em;
 }
 
 .filter-group select,
 .filter-group input[type="text"] {
-  padding: 0.5rem 0.75rem;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
   font-size: 0.875rem;
-  background: white;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  transition: all 0.3s ease;
 }
 
 .filter-group select:focus,
 .filter-group input[type="text"]:focus {
   outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 15px var(--accent-cyan-glow);
+}
+
+.filter-group select option {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
 }
 
 .filter-group input[type="range"] {
-  width: 120px;
+  width: 140px;
+  accent-color: var(--accent-cyan);
 }
 
 .range-value {
   font-size: 0.75rem;
   font-weight: 600;
-  color: #3b82f6;
+  color: var(--accent-cyan);
+  text-shadow: 0 0 10px var(--accent-cyan-glow);
 }
 
 /* Results info */
 .results-info {
   font-size: 0.875rem;
-  color: #6b7280;
+  color: var(--text-muted);
   margin-bottom: 1rem;
+  font-family: 'JetBrains Mono', monospace;
 }
 
 .results-info strong {
-  color: #111827;
+  color: var(--accent-cyan);
 }
 
-/* Log message styling */
+/* Log message styling - Terminal style */
 .log-message {
-  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Monaco', 'Fira Code', monospace;
   font-size: 0.8rem;
-  color: #4b5563;
+  color: var(--accent-green);
   word-break: break-word;
+  background: rgba(16, 185, 129, 0.1);
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  border-left: 2px solid var(--accent-green);
 }
 
 /* Responsive */

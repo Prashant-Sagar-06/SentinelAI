@@ -29,6 +29,7 @@ from src.api.schemas import (
     RootCauseListResponse,
     RootCauseResponse,
     ExplanationsResponse,
+    RemediationResponse,
     ErrorResponse
 )
 from src.api.repository import (
@@ -192,6 +193,17 @@ async def list_root_causes(
                 recommendations=explanations_data.get("recommendations")
             ) if explanations_data else None
             
+            # Parse remediation if present (enriched by repository)
+            remediation_data = rc.get("remediation")
+            remediation = RemediationResponse(
+                issue_category=remediation_data.get("issue_category", "unknown"),
+                description=remediation_data.get("description", ""),
+                fix_steps=remediation_data.get("fix_steps", []),
+                priority=remediation_data.get("priority", "MEDIUM"),
+                estimated_resolution_time=remediation_data.get("estimated_resolution_time", "Unknown"),
+                confidence_score=remediation_data.get("confidence_score", 0.0)
+            ) if remediation_data else None
+            
             rc_responses.append(RootCauseResponse(
                 root_cause_message=rc.get("root_cause_message", ""),
                 root_cause_service=rc.get("root_cause_service", "unknown"),
@@ -201,7 +213,8 @@ async def list_root_causes(
                 confidence_level=rc.get("confidence_level", "MEDIUM"),
                 timeline_summary=rc.get("timeline_summary"),
                 explanations=explanations,
-                detected_at=rc.get("detected_at")
+                detected_at=rc.get("detected_at"),
+                remediation=remediation
             ))
         
         return RootCauseListResponse(

@@ -1,12 +1,26 @@
 /**
  * SentinelAI Dashboard - Data Table Styles
+ * Cyberpunk data grid
  */
 
 .table-container {
   overflow-x: auto;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  background: white;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--bg-card);
+  box-shadow: var(--shadow-card);
+  position: relative;
+}
+
+.table-container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent-cyan), transparent);
+  opacity: 0.5;
 }
 
 .data-table {
@@ -16,31 +30,58 @@
 }
 
 .data-table thead {
-  background: #f9fafb;
-  border-bottom: 2px solid #e5e7eb;
+  background: linear-gradient(180deg, rgba(6, 182, 212, 0.1) 0%, transparent 100%);
+  border-bottom: 1px solid var(--border-color);
 }
 
 .data-table th {
-  padding: 0.75rem 1rem;
+  padding: 1rem 1.25rem;
   text-align: left;
   font-weight: 600;
-  color: #374151;
+  color: var(--accent-cyan);
   white-space: nowrap;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  position: relative;
+}
+
+.data-table th::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 25%;
+  height: 50%;
+  width: 1px;
+  background: var(--border-color);
+}
+
+.data-table th:last-child::after {
+  display: none;
 }
 
 .data-table td {
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid #f3f4f6;
-  color: #4b5563;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid rgba(6, 182, 212, 0.1);
+  color: var(--text-secondary);
   vertical-align: top;
+  transition: all 0.2s ease;
 }
 
 .data-table tbody tr:last-child td {
   border-bottom: none;
 }
 
+.data-table tbody tr {
+  transition: all 0.3s ease;
+}
+
 .data-table tbody tr:hover {
-  background: #f9fafb;
+  background: linear-gradient(90deg, rgba(6, 182, 212, 0.05), rgba(168, 85, 247, 0.03), transparent);
+}
+
+.data-table tbody tr:hover td {
+  color: var(--text-primary);
 }
 
 .data-table tbody tr.clickable {
@@ -48,7 +89,8 @@
 }
 
 .data-table tbody tr.clickable:hover {
-  background: #f3f4f6;
+  background: linear-gradient(90deg, rgba(6, 182, 212, 0.1), rgba(168, 85, 247, 0.05), transparent);
+  box-shadow: inset 3px 0 0 var(--accent-cyan);
 }
 
 /* Column utilities */
@@ -66,14 +108,30 @@
 
 /* Empty state */
 .table-empty {
-  padding: 3rem 1rem;
+  padding: 4rem 1rem;
   text-align: center;
-  background: #f9fafb;
-  border: 1px dashed #d1d5db;
-  border-radius: 8px;
+  background: var(--bg-tertiary);
+  border: 1px dashed var(--border-color);
+  border-radius: 12px;
+  position: relative;
+  overflow: hidden;
+}
+
+.table-empty::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 200px;
+  height: 200px;
+  background: radial-gradient(circle, var(--accent-cyan-glow), transparent 70%);
+  opacity: 0.2;
 }
 
 .table-empty p {
-  color: #6b7280;
+  color: var(--text-muted);
   margin: 0;
+  position: relative;
+  z-index: 1;
 }

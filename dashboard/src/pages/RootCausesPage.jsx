@@ -2,12 +2,13 @@
  * SentinelAI Dashboard - Root Causes Page
  * ========================================
  * 
- * Page for viewing root cause analysis results.
+ * Page for viewing root cause analysis results with remediation guidance.
  */
 
 import React, { useState } from 'react';
 import { useRootCauses } from '../hooks/useRootCauses';
 import DataTable from '../components/DataTable';
+import RemediationGuidance from '../components/RemediationGuidance';
 import ScoreBadge from '../components/ScoreBadge';
 import Loading from '../components/Loading';
 import ErrorMessage from '../components/ErrorMessage';
@@ -41,7 +42,7 @@ export const RootCausesPage = () => {
   // Table columns
   const columns = [
     { 
-      key: 'analysis_timestamp', 
+      key: 'detected_at', 
       label: 'Analyzed At', 
       className: 'col-medium',
       render: (val) => formatTimestamp(val) 
@@ -77,7 +78,7 @@ export const RootCausesPage = () => {
       )
     },
     { 
-      key: 'total_anomalies', 
+      key: 'anomaly_count', 
       label: 'Anomalies',
       className: 'col-narrow',
       render: (val) => val || 0
@@ -179,19 +180,19 @@ export const RootCausesPage = () => {
                   <div className="detail-grid">
                     <div className="detail-item">
                       <label>Total Anomalies</label>
-                      <span>{rc.total_anomalies || 0}</span>
+                      <span>{rc.anomaly_count || 0}</span>
                     </div>
                     <div className="detail-item">
-                      <label>Unique Services</label>
-                      <span>{rc.unique_services || 0}</span>
+                      <label>Affected Services</label>
+                      <span>{rc.affected_services?.length || 0}</span>
                     </div>
                     <div className="detail-item">
-                      <label>Avg Anomaly Score</label>
-                      <span>{(rc.avg_anomaly_score * 100).toFixed(1)}%</span>
+                      <label>Confidence Level</label>
+                      <span>{rc.confidence_level || 'N/A'}</span>
                     </div>
                     <div className="detail-item">
                       <label>Analyzed</label>
-                      <span>{formatTimestamp(rc.analysis_timestamp)}</span>
+                      <span>{formatTimestamp(rc.detected_at)}</span>
                     </div>
                   </div>
                   
@@ -203,6 +204,13 @@ export const RootCausesPage = () => {
                           <span key={i} className="service-tag">{svc}</span>
                         ))}
                       </div>
+                    </div>
+                  )}
+
+                  {/* Remediation Guidance Section */}
+                  {rc.remediation && (
+                    <div className="remediation-section">
+                      <RemediationGuidance remediation={rc.remediation} />
                     </div>
                   )}
                 </div>

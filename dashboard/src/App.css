@@ -1,6 +1,40 @@
 /**
  * SentinelAI Dashboard - Global App Styles
+ * Tech-inspired cyberpunk theme
  */
+
+/* CSS Variables for Tech Theme */
+:root {
+  --bg-primary: #0a0e17;
+  --bg-secondary: #111827;
+  --bg-tertiary: #1a1f2e;
+  --bg-card: linear-gradient(145deg, #141b2d 0%, #0f1419 100%);
+  --bg-hover: rgba(6, 182, 212, 0.05);
+  
+  --accent-cyan: #06b6d4;
+  --accent-cyan-glow: rgba(6, 182, 212, 0.4);
+  --accent-purple: #a855f7;
+  --accent-purple-glow: rgba(168, 85, 247, 0.4);
+  --accent-green: #10b981;
+  --accent-green-glow: rgba(16, 185, 129, 0.4);
+  --accent-red: #ef4444;
+  --accent-red-glow: rgba(239, 68, 68, 0.4);
+  --accent-yellow: #f59e0b;
+  --accent-yellow-glow: rgba(245, 158, 11, 0.4);
+  
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  
+  --border-color: rgba(6, 182, 212, 0.2);
+  --border-glow: rgba(6, 182, 212, 0.5);
+  
+  --gradient-cyber: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+  --gradient-tech: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%);
+  
+  --shadow-neon: 0 0 20px var(--accent-cyan-glow), 0 0 40px rgba(6, 182, 212, 0.1);
+  --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.4), 0 0 1px var(--border-color);
+}
 
 /* CSS Reset & Base Styles */
 *,
@@ -18,10 +52,26 @@ html {
 body {
   margin: 0;
   padding: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  background: #f3f4f6;
-  color: #1f2937;
-  line-height: 1.5;
+  font-family: 'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.6;
+}
+
+/* Animated background grid pattern */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: 
+    linear-gradient(rgba(6, 182, 212, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(6, 182, 212, 0.03) 1px, transparent 1px);
+  background-size: 50px 50px;
+  pointer-events: none;
+  z-index: 0;
 }
 
 /* App Layout */
@@ -29,52 +79,61 @@ body {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  position: relative;
+  z-index: 1;
 }
 
 .app-main {
   flex: 1;
-  background: #f3f4f6;
+  background: transparent;
+  position: relative;
 }
 
-/* Scrollbar Styling */
+/* Tech Scrollbar Styling */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: var(--bg-secondary);
+  border-left: 1px solid var(--border-color);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: linear-gradient(180deg, var(--accent-cyan), var(--accent-purple));
   border-radius: 4px;
+  box-shadow: 0 0 10px var(--accent-cyan-glow);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: linear-gradient(180deg, var(--accent-purple), var(--accent-cyan));
 }
 
 /* Selection */
 ::selection {
-  background: #3b82f6;
-  color: white;
+  background: var(--accent-cyan);
+  color: var(--bg-primary);
 }
 
 /* Links */
 a {
-  color: #3b82f6;
+  color: var(--accent-cyan);
   text-decoration: none;
+  transition: all 0.3s ease;
 }
 
 a:hover {
-  text-decoration: underline;
+  color: var(--accent-purple);
+  text-shadow: 0 0 10px var(--accent-cyan-glow);
+  text-decoration: none;
 }
 
 /* Focus styles for accessibility */
 :focus-visible {
-  outline: 2px solid #3b82f6;
+  outline: 2px solid var(--accent-cyan);
   outline-offset: 2px;
+  box-shadow: 0 0 15px var(--accent-cyan-glow);
 }
 
 /* Utility classes */
@@ -88,4 +147,27 @@ a:hover {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+/* Glow text effect utility */
+.glow-text {
+  text-shadow: 0 0 10px var(--accent-cyan-glow), 0 0 20px var(--accent-cyan-glow);
+}
+
+/* Tech border animation */
+@keyframes borderGlow {
+  0%, 100% { border-color: var(--accent-cyan); box-shadow: 0 0 5px var(--accent-cyan-glow); }
+  50% { border-color: var(--accent-purple); box-shadow: 0 0 15px var(--accent-purple-glow); }
+}
+
+/* Pulse animation */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Scan line effect */
+@keyframes scanline {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100vh); }
 }

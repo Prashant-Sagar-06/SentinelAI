@@ -241,6 +241,127 @@ python -c "from src.analysis.root_cause_analysis import RootCauseAnalyzer; print
    - Usage examples
    - Configuration guide
 
+---
+
+## Remediation Recommendation Engine (NEW)
+
+### What Was Added
+
+The system now includes a complete **Remediation Recommendation Engine** that explains HOW TO FIX identified root causes.
+
+#### 1. Remediation Knowledge Base
+**File:** `ai-engine/src/analysis/remediation_kb.py`
+
+A deterministic, rule-based knowledge base mapping root cause patterns to fix steps:
+- **15+ issue categories** covered (database, API, memory, disk, network, config)
+- **Keyword-based matching** (no LLM/ML calls)
+- **Priority levels**: LOW, MEDIUM, HIGH, CRITICAL
+- **Time estimates** for resolution
+
+Covered Issue Categories:
+- `database_connection_error` - MongoDB connection pool issues
+- `database_auth_failure` - Authentication/credential issues
+- `database_query_timeout` - Slow query issues
+- `api_timeout` - Service timeout issues (504)
+- `api_overload` - Request overload/congestion
+- `high_memory_usage` - OOM and memory issues
+- `cpu_overload` - CPU saturation
+- `disk_space_critical` - Storage issues
+- `hdfs_block_error` - HDFS block corruption
+- `service_crash` - Container/process crashes
+- `service_unresponsive` - Deadlock/hang issues
+- `network_connectivity_issue` - Network problems
+- `dns_failure` - DNS resolution failures
+- `config_error` - Configuration/env var issues
+- `permission_denied` - File/resource permission issues
+- `unknown_error` - Fallback for unmatched issues
+
+#### 2. Remediation Engine
+**File:** `ai-engine/src/analysis/remediation_engine.py`
+
+Core class that generates remediation guidance:
+```python
+engine = RemediationEngine()
+result = engine.generate_remediation(
+    root_cause_service="mongodb",
+    root_cause_message="Connection timeout after 30s",
+    root_cause_confidence=0.87
+)
+# Returns: RemediationResult with fix_steps, priority, estimated_time
+```
+
+Features:
+- **Keyword-based matching** against knowledge base
+- **Confidence scoring** for remediation recommendations
+- **Deterministic output** (same input → same output)
+- **Interview-safe** logic (no black boxes)
+
+#### 3. Updated API Schemas
+**File:** `ai-engine/src/api/schemas.py`
+
+New schema added:
+```python
+class RemediationResponse(BaseModel):
+    issue_category: str
+    description: str
+    fix_steps: List[str]
+    priority: str  # LOW/MEDIUM/HIGH/CRITICAL
+    estimated_resolution_time: str
+    confidence_score: float
+```
+
+`RootCauseResponse` now includes optional `remediation` field.
+
+#### 4. Backend Integration
+**File:** `ai-engine/src/api/repository.py`
+
+Repository automatically enriches root causes with remediation:
+```python
+cleaned = _enrich_root_cause_with_remediation(cleaned)
+```
+
+FastAPI routes return remediation in GET /api/v1/root-causes.
+
+#### 5. React Dashboard Components
+**Files:**
+- `dashboard/src/components/RemediationGuidance.jsx`
+- `dashboard/src/components/RemediationGuidance.css`
+- `dashboard/src/pages/RootCausesPage.jsx` (updated)
+
+UI Features:
+- **Recommended Fix section** for each root cause
+- **Bullet-pointed fix steps** (ordered list)
+- **Color-coded priority badge** (CRITICAL=red, HIGH=orange, etc.)
+- **Estimated resolution time** display
+- **Clean, professional layout** (no animations)
+
+### Architecture
+
+```
+Root Cause Analysis ─────> Remediation Engine ─────> API Response
+                                   ↓
+                          Knowledge Base
+                     (keyword → fix steps mapping)
+                                   ↓
+                         RemediationResult
+                    ├─ issue_category
+                    ├─ description
+                    ├─ fix_steps[]
+                    ├─ priority
+                    ├─ estimated_resolution_time
+                    └─ confidence_score
+```
+
+### Key Design Decisions
+
+1. **Deterministic**: No LLM calls, pure rule-based matching
+2. **Explainable**: Every match can be traced to keywords
+3. **Human-in-the-loop**: NO auto-execution of fixes
+4. **Backward compatible**: Existing APIs unchanged, remediation is optional
+5. **Production-grade**: Clean code, clear comments, proper error handling
+
+---
+
 ## Next Steps
 
 1. **Generate test data** - Run demo app to create diverse logs
@@ -259,3 +380,5 @@ The root cause analysis module successfully:
 - ✓ Generates human-readable explanations
 - ✓ Integrates seamlessly into existing pipeline
 - ✓ Requires no additional ML training
+- ✓ **NEW: Provides actionable remediation guidance**
+- ✓ **NEW: Displays fix steps with priority and time estimates**
