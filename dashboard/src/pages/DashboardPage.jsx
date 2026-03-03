@@ -3,9 +3,10 @@
  * ======================================
  * 
  * Main dashboard overview page with statistics and recent data.
+ * Features auto-refresh for real-time monitoring.
  */
 
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useStats } from '../hooks/useStats';
 import { useAnomalies } from '../hooks/useAnomalies';
@@ -17,6 +18,9 @@ import Loading from '../components/Loading';
 import ErrorMessage from '../components/ErrorMessage';
 import './DashboardPage.css';
 
+// Auto-refresh interval in milliseconds (30 seconds)
+const AUTO_REFRESH_INTERVAL = 30000;
+
 /**
  * Format timestamp for display.
  */
@@ -27,12 +31,47 @@ const formatTimestamp = (timestamp) => {
 };
 
 /**
+ * Format relative time for "last updated" display.
+ */
+const formatRelativeTime = (date) => {
+  const seconds = Math.floor((new Date() - date) / 1000);
+  if (seconds < 5) return 'just now';
+  if (seconds < 60) return `${seconds}s ago`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  return date.toLocaleTimeString();
+};
+
+/**
  * Dashboard page component.
  */
 export const DashboardPage = () => {
-  const { stats, loading: statsLoading, error: statsError, refetch: refetchStats } = useStats();
-  const { anomalies, loading: anomaliesLoading, error: anomaliesError } = useAnomalies({ limit: 5 });
-  const { rootCauses, loading: rootCausesLoading, error: rootCausesError } = useRootCauses({ limit: 3 });
+  const [lastUpdated, setLastUpdated] = useState(new Date());
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const { stats, loading: statsLoading, error: statsError, refetch: refetchStats } = useStats({ 
+    autoRefresh: true, 
+    refreshInterval: AUTO_REFRESH_INTERVAL 
+  });
+  const { anomalies, loading: anomaliesLoading, error: anomaliesError, refetch: refetchAnomalies } = useAnomalies({ 
+    limit: 5, 
+    autoRefresh: true, 
+    refreshInterval: AUTO_REFRESH_INTERVAL 
+  });
+  const { rootCauses, loading: rootCausesLoading, error: rootCausesError, refetch: refetchRootCauses } = useRootCauses({ 
+    limit: 3, 
+    autoRefresh: true, 
+    refreshInterval: AUTO_REFRESH_INTERVAL 
+  });
+
+  /**
+   * Manual refresh handler - refreshes all data.
+   */
+  const handleManualRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    await Promise.all([refetchStats(), refetchAnomalies(), refetchRootCauses()]);
+    setLastUpdated(new Date());
+    setIsRefreshing(false);
+  }, [refetchStats, refetchAnomalies, refetchRootCauses]);
 
   const loading = statsLoading || anomaliesLoading || rootCausesLoading;
   
@@ -59,8 +98,23 @@ export const DashboardPage = () => {
   return (
     <div className="dashboard-page">
       <header className="page-header">
-        <h1>Dashboard Overview</h1>
-        <p>Real-time insights from AI-powered log analysis</p>
+        <div className="page-header-content">
+          <h1>Dashboard Overview</h1>
+          <p>Real-time insights from AI-powered log analysis</p>
+        </div>
+        <div className="page-header-actions">
+          <span className="last-updated">
+            Last updated: {formatRelativeTime(lastUpdated)}
+          </span>
+          <button 
+            className={`refresh-btn ${isRefreshing ? 'refreshing' : ''}`}
+            onClick={handleManualRefresh}
+            disabled={isRefreshing}
+            title="Refresh data"
+          >
+            {isRefreshing ? '↻ Syncing...' : '↻ Refresh'}
+          </button>
+        </div>
       </header>
 
       {/* Stats Section */}
