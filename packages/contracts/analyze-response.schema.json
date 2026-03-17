@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinelai.local/schemas/analyze-response.json",
+  "title": "AnalyzeResponse",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["anomaly_score", "risk_score", "risk_level", "threat_type", "explanations", "model_version"],
+  "properties": {
+    "model_version": { "type": "string" },
+    "anomaly_score": { "type": "number", "minimum": 0, "maximum": 1 },
+    "risk_score": { "type": "number", "minimum": 0, "maximum": 1 },
+    "risk_level": { "type": "string", "enum": ["low", "medium", "high", "critical"] },
+    "threat_type": { "type": "string" },
+    "explanations": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "features": {
+      "type": "object",
+      "additionalProperties": { "type": ["number", "string", "boolean", "null"] }
+    }
+  }
+}

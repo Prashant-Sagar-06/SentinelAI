@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinelai.local/schemas/security-event.json",
+  "title": "SecurityEvent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["timestamp", "source", "event_type"],
+  "properties": {
+    "timestamp": { "type": "string", "format": "date-time" },
+    "source": { "type": "string", "minLength": 1 },
+    "event_type": { "type": "string", "minLength": 1 },
+    "message": { "type": "string" },
+    "status": { "type": "string" },
+    "severity_hint": { "type": "string" },
+    "tenant_id": { "type": "string" },
+    "ingest_id": { "type": "string" },
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "user": { "type": "string" },
+        "service": { "type": "string" },
+        "role": { "type": "string" }
+      }
+    },
+    "network": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ip": { "type": "string" },
+        "user_agent": { "type": "string" }
+      }
+    },
+    "attributes": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

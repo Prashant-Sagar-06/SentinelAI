@@ -1,0 +1,14 @@
+{
+  "name": "@sentinelai/worker",
+  "private": true,
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "bullmq": "^5.22.0",
+    "dotenv": "^16.4.5",
+    "mongoose": "^8.5.2"
+  }
+}

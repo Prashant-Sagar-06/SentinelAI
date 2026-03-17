@@ -1,0 +1,25 @@
+import jwt from 'jsonwebtoken';
+import { config } from '../config.js';
+
+export function requireAuth(req, res, next) {
+  const header = req.headers.authorization;
+  if (!header?.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'missing_token' });
+  }
+  const token = header.slice('Bearer '.length);
+  try {
+    const payload = jwt.verify(token, config.jwtSecret);
+    req.user = payload;
+    return next();
+  } catch {
+    return res.status(401).json({ error: 'invalid_token' });
+  }
+}
+
+export function signJwt(user) {
+  return jwt.sign(
+    { sub: String(user._id), email: user.email, role: user.role },
+    config.jwtSecret,
+    { expiresIn: '12h' }
+  );
+}

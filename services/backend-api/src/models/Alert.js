@@ -1,0 +1,27 @@
+import mongoose from 'mongoose';
+
+const AlertSchema = new mongoose.Schema(
+  {
+    event_id: { type: mongoose.Schema.Types.ObjectId, required: true, index: true, ref: 'LogEvent' },
+    title: { type: String, required: true },
+    severity: { type: String, required: true, enum: ['low', 'medium', 'high', 'critical'], index: true },
+    status: { type: String, required: true, enum: ['open', 'ack', 'closed'], default: 'open', index: true },
+    threat_type: { type: String, required: true, index: true },
+    group_key: { type: String, required: true, index: true },
+    reason: { type: String, required: true },
+    source_ip: { type: String, index: true },
+    actor: { type: String, index: true },
+    counts: {
+      occurrences: { type: Number, default: 1 },
+      first_seen_at: { type: Date, default: () => new Date() },
+      last_seen_at: { type: Date, default: () => new Date() },
+    },
+    createdAt: { type: Date, default: () => new Date(), index: true },
+    updatedAt: { type: Date, default: () => new Date(), index: true },
+  },
+  { versionKey: false }
+);
+
+AlertSchema.index({ group_key: 1, status: 1, severity: 1 });
+
+export const Alert = mongoose.model('Alert', AlertSchema);

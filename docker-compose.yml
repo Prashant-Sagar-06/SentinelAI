@@ -1,0 +1,71 @@
+services:
+  mongo:
+    image: mongo:7
+    container_name: sentinelai-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  redis:
+    image: redis:7-alpine
+    container_name: sentinelai-redis
+    ports:
+      - "6379:6379"
+
+  ai-engine:
+    build:
+      context: ./services/ai-engine
+    container_name: sentinelai-ai-engine
+    environment:
+      - MONGO_URL=${MONGO_URL}
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mongo
+
+  backend-api:
+    build:
+      context: ./services/backend-api
+    container_name: sentinelai-backend
+    environment:
+      - NODE_ENV=production
+      - BACKEND_PORT=${BACKEND_PORT}
+      - MONGO_URL=${MONGO_URL}
+      - REDIS_URL=${REDIS_URL}
+      - JWT_SECRET=${JWT_SECRET}
+      - CORS_ORIGIN=${CORS_ORIGIN}
+    ports:
+      - "${BACKEND_PORT}:4000"
+    depends_on:
+      - mongo
+      - redis
+
+  worker:
+    build:
+      context: ./services/worker
+    container_name: sentinelai-worker
+    environment:
+      - NODE_ENV=production
+      - MONGO_URL=${MONGO_URL}
+      - REDIS_URL=${REDIS_URL}
+      - AI_ENGINE_URL=${AI_ENGINE_URL}
+      - ALERT_THRESHOLD_RISK=${ALERT_THRESHOLD_RISK}
+    depends_on:
+      - mongo
+      - redis
+      - ai-engine
+
+  frontend:
+    build:
+      context: ./services/frontend
+    container_name: sentinelai-frontend
+    environment:
+      - NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend-api
+
+volumes:
+  mongo_data:
