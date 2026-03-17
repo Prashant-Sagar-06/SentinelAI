@@ -12,7 +12,7 @@ const LogEventSchema = new mongoose.Schema(
     ingest_id: { type: String, index: true },
     actor: {
       user: { type: String, index: true },
-      service: { type: String },
+      service: { type: String, index: true },
       role: { type: String },
     },
     network: {

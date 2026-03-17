@@ -46,6 +46,7 @@ class AnalyzeRequest(BaseModel):
 class AnalyzeResponse(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
 
+    event_id: str
     model_version: str
     anomaly_score: float = Field(ge=0.0, le=1.0)
     risk_score: float = Field(ge=0.0, le=1.0)
