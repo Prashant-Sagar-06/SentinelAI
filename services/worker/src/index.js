@@ -7,6 +7,7 @@ import { AnomalyResult } from './models/AnomalyResult.js';
 import { Alert } from './models/Alert.js';
 import { Incident } from './models/Incident.js';
 import { redisConnectionFromUrl } from './redis.js';
+import { lookupThreatIntel } from './lib/threatIntel.js';
 
 requireEnv();
 await connectMongo();
@@ -19,6 +20,31 @@ function logInfo(message, meta) {
 function logError(message, meta) {
   // eslint-disable-next-line no-console
   console.error(`[worker] ${message}`, meta ?? '');
+}
+
+async function broadcastAlertCreated(alertDoc) {
+  if (!alertDoc) return;
+
+  const url = `${config.backendApiUrl}/internal/broadcast/alert`;
+  const payload = typeof alertDoc.toJSON === 'function' ? alertDoc.toJSON() : alertDoc;
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(config.internalBroadcastSecret ? { 'x-internal-secret': config.internalBroadcastSecret } : {}),
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      logError('broadcast failed', { status: res.status, body: text.slice(0, 500) });
+    }
+  } catch (e) {
+    logError('broadcast error', { message: e?.message });
+  }
 }
 
 function deriveGroupKey({ threatType, sourceIp, actor, timestamp }) {
@@ -176,6 +202,8 @@ const worker = new Worker(
 
       const sourceIp = eventDoc.network?.ip;
       const actor = eventDoc.actor?.user ?? eventDoc.actor?.service;
+
+      const threatIntel = sourceIp ? await lookupThreatIntel(sourceIp) : null;
       const groupKey = deriveGroupKey({
         threatType: analyzed.threat_type,
         sourceIp,
@@ -203,6 +231,7 @@ const worker = new Worker(
           last_seen: now,
           'counts.last_seen_at': now,
           updatedAt: now,
+          ...(threatIntel ? { threat_intel: threatIntel } : {}),
         },
         $setOnInsert: {
           event_id: eventDoc._id,
@@ -235,7 +264,7 @@ const worker = new Worker(
             { group_key: groupKey, status: 'open', window_start: windowStart },
             {
               $inc: { event_count: 1, 'counts.occurrences': 1 },
-              $set: { last_seen: now, 'counts.last_seen_at': now, updatedAt: now },
+              $set: { last_seen: now, 'counts.last_seen_at': now, updatedAt: now, ...(threatIntel ? { threat_intel: threatIntel } : {}) },
             },
             { new: true }
           );
@@ -250,7 +279,7 @@ const worker = new Worker(
             { group_key: groupKey, status: 'open', window_start: windowStart },
             {
               $inc: { event_count: 1, 'counts.occurrences': 1 },
-              $set: { last_seen: now, updatedAt: now },
+              $set: { last_seen: now, updatedAt: now, ...(threatIntel ? { threat_intel: threatIntel } : {}) },
               $setOnInsert: {
                 event_id: eventDoc._id,
                 title,
@@ -285,6 +314,8 @@ const worker = new Worker(
           severity: alert.severity,
           threat_type: alert.threat_type,
         });
+
+        await broadcastAlertCreated(alert);
 
         const effectiveSeverity = maxSeverity(alert.severity, analyzed.risk_level);
         if (effectiveSeverity !== alert.severity) {

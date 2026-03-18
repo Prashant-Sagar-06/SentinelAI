@@ -1,0 +1,7 @@
+{
+  "name": "@sentinelai/contracts",
+  "private": true,
+  "version": "0.0.0",
+  "description": "SentinelAI JSON schema contracts.",
+  "license": "MIT"
+}

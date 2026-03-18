@@ -1,3 +1,4 @@
+import http from 'http';
 import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
@@ -14,6 +15,8 @@ import { healthRouter } from './routes/health.js';
 import { createLogsRouter } from './routes/logs.js';
 import { alertsRouter } from './routes/alerts.js';
 import { copilotRouter } from './routes/copilot.js';
+import { incidentsRouter } from './routes/incidents.js';
+import { initSocket, broadcastAlert } from './lib/socket.js';
 
 requireEnv();
 await connectMongo();
@@ -40,6 +43,22 @@ app.use(
 );
 
 app.use(healthRouter);
+
+// Worker/internal hooks (no JWT)
+app.post('/internal/broadcast/alert', async (req, res) => {
+  const secret = config.internalBroadcastSecret;
+  if (!secret) return res.status(503).json({ error: 'internal_broadcast_disabled' });
+  const provided = String(req.header('x-internal-secret') ?? '');
+  if (provided !== secret) return res.status(401).json({ error: 'unauthorized' });
+
+  // Keep it permissive; worker may send partial shapes.
+  const alert = req.body;
+  if (!alert || typeof alert !== 'object') return res.status(400).json({ error: 'invalid_body' });
+
+  broadcastAlert(alert);
+  return res.json({ ok: true });
+});
+
 app.use('/api/auth', authRouter);
 
 // Protect everything else
@@ -50,13 +69,19 @@ app.use('/api/logs', createLogsRouter(analysisQueue));
 // Alerts
 app.use('/api/alerts', alertsRouter);
 
+// Incidents
+app.use('/api/incidents', incidentsRouter);
+
 // Copilot
 app.use('/api/copilot', copilotRouter);
 
 app.use(errorHandler);
 
-// Start server
-app.listen(config.port, '0.0.0.0', () => {
+// Start server (http server required for Socket.IO)
+const server = http.createServer(app);
+initSocket(server);
+
+server.listen(config.port, '0.0.0.0', () => {
   // eslint-disable-next-line no-console
   console.log(`backend-api listening on :${config.port}`);
 });

@@ -11,6 +11,8 @@ const IncidentSchema = new mongoose.Schema(
       default: 'open',
       index: true,
     },
+    assigned_to: { type: String, default: null },
+    notes: { type: String, default: null },
     alerts: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Alert' }],
     actors: [{ type: String, index: true }],
     source_ips: [{ type: String, index: true }],

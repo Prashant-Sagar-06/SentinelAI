@@ -7,6 +7,8 @@ export const config = {
   redisUrl: process.env.REDIS_URL,
   aiEngineUrl: process.env.AI_ENGINE_URL ?? 'http://ai-engine:8000',
   alertThresholdRisk: Number(process.env.ALERT_THRESHOLD_RISK ?? 0.6),
+  backendApiUrl: process.env.BACKEND_API_URL ?? 'http://backend-api:4000',
+  internalBroadcastSecret: process.env.INTERNAL_BROADCAST_SECRET ?? '',
 };
 
 export function requireEnv() {

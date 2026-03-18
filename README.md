@@ -2,6 +2,12 @@
 
 AI-powered security intelligence & threat detection platform.
 
+## Docs
+
+- Architecture: `ARCHITECTURE.md`
+- API reference: `API.md`
+- Deployment: `DEPLOYMENT.md`
+
 ## Local Development (Docker)
 
 1. Copy env template:

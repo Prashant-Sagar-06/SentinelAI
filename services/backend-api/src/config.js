@@ -17,6 +17,8 @@ export const config = {
   groqApiKey: process.env.GROQ_API_KEY,
   groqModel: process.env.GROQ_MODEL ?? 'llama3-70b-8192',
   copilotRateLimitPerMinute: Number(process.env.COPILOT_RATE_LIMIT_PER_MINUTE ?? 10),
+
+  internalBroadcastSecret: process.env.INTERNAL_BROADCAST_SECRET ?? '',
 };
 
 export function requireEnv() {
@@ -24,6 +26,11 @@ export function requireEnv() {
   for (const key of ['MONGO_URL', 'REDIS_URL', 'JWT_SECRET']) {
     if (!process.env[key]) missing.push(key);
   }
+
+  if ((process.env.NODE_ENV ?? 'development') === 'production') {
+    if (!process.env.INTERNAL_BROADCAST_SECRET) missing.push('INTERNAL_BROADCAST_SECRET');
+  }
+
   if (missing.length) {
     throw new Error(`Missing env vars: ${missing.join(', ')}`);
   }

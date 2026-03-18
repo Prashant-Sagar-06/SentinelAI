@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { io } from 'socket.io-client';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 
@@ -39,6 +40,37 @@ export default function Alerts() {
       setItems(data.items || []);
     })();
   }, [router]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const token = localStorage.getItem('sentinelai_token');
+    if (!token) return undefined;
+
+    async function refresh() {
+      try {
+        const res = await fetch(`${API_BASE}/api/alerts?limit=50`, { headers: { authorization: `Bearer ${token}` } });
+        const data = await res.json();
+        if (res.ok && !cancelled) setItems(data.items || []);
+      } catch {
+        // best-effort; page already shows errors for initial load
+      }
+    }
+
+    const socket = io(API_BASE);
+
+    socket.on('connect_error', () => {
+      // no-op; best-effort realtime
+    });
+
+    socket.on('alert_created', () => {
+      refresh();
+    });
+
+    return () => {
+      cancelled = true;
+      socket.disconnect();
+    };
+  }, []);
 
   return (
     <div className="container">

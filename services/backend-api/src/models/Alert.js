@@ -10,6 +10,11 @@ const AlertSchema = new mongoose.Schema(
     group_key: { type: String, required: true, index: true },
     reason: { type: String, required: true },
     source_ip: { type: String, index: true },
+    threat_intel: {
+      reputation: { type: String, enum: ['malicious', 'unknown'], default: 'unknown' },
+      country: { type: String, default: 'Unknown' },
+      provider: { type: String, default: 'local-feed' },
+    },
     actor: { type: String, index: true },
 
     // Dedup/grouping fields
