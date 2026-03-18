@@ -10,6 +10,13 @@ export const config = {
   jwtSecret: process.env.JWT_SECRET,
   corsOrigin: process.env.CORS_ORIGIN ?? 'http://localhost:3000',
   rateLimitPerMinute: Number(process.env.RATE_LIMIT_PER_MINUTE ?? 120),
+
+  copilotProvider: process.env.COPILOT_PROVIDER ?? 'mock',
+  openaiApiKey: process.env.OPENAI_API_KEY,
+  openaiModel: process.env.OPENAI_MODEL ?? 'gpt-4o-mini',
+  groqApiKey: process.env.GROQ_API_KEY,
+  groqModel: process.env.GROQ_MODEL ?? 'llama3-70b-8192',
+  copilotRateLimitPerMinute: Number(process.env.COPILOT_RATE_LIMIT_PER_MINUTE ?? 10),
 };
 
 export function requireEnv() {

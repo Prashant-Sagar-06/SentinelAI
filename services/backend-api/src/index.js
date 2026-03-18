@@ -13,6 +13,7 @@ import { authRouter } from './routes/auth.js';
 import { healthRouter } from './routes/health.js';
 import { createLogsRouter } from './routes/logs.js';
 import { alertsRouter } from './routes/alerts.js';
+import { copilotRouter } from './routes/copilot.js';
 
 requireEnv();
 await connectMongo();
@@ -48,6 +49,9 @@ app.use('/api/logs', createLogsRouter(analysisQueue));
 
 // Alerts
 app.use('/api/alerts', alertsRouter);
+
+// Copilot
+app.use('/api/copilot', copilotRouter);
 
 app.use(errorHandler);
 

@@ -8,6 +8,13 @@ function badge(sev) {
   return <span className="badge">{sev}</span>;
 }
 
+function fmtTime(v) {
+  if (!v) return '-';
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return '-';
+  return d.toLocaleTimeString();
+}
+
 export default function Alerts() {
   const router = useRouter();
   const [items, setItems] = useState([]);
@@ -63,6 +70,13 @@ export default function Alerts() {
                 {badge(a.severity)}
               </div>
               <div className="small">{a.threat_type} • {a.status}</div>
+              <div className="small">
+                Events: {a.event_count ?? a.counts?.occurrences ?? 1}
+              </div>
+              <div className="small">
+                First Seen: {fmtTime(a.first_seen ?? a.counts?.first_seen_at ?? a.createdAt)} • Last Seen:{' '}
+                {fmtTime(a.last_seen ?? a.counts?.last_seen_at ?? a.updatedAt)}
+              </div>
               <div className="small">{a.reason}</div>
             </div>
           </Link>

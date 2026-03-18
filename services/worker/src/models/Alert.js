@@ -11,6 +11,13 @@ const AlertSchema = new mongoose.Schema(
     reason: { type: String, required: true },
     source_ip: { type: String, index: true },
     actor: { type: String, index: true },
+
+    // Dedup/grouping fields
+    event_count: { type: Number, default: 1 },
+    first_seen: { type: Date, default: () => new Date() },
+    last_seen: { type: Date, default: () => new Date(), index: true },
+    window_start: { type: Date, index: true },
+
     counts: {
       occurrences: { type: Number, default: 1 },
       first_seen_at: { type: Date, default: () => new Date() },
@@ -23,5 +30,9 @@ const AlertSchema = new mongoose.Schema(
 );
 
 AlertSchema.index({ group_key: 1, status: 1 });
+AlertSchema.index({ group_key: 1, status: 1, createdAt: -1 });
+// Prevent duplicate alerts for the same group within the same 5-minute window.
+// Sparse keeps legacy docs (without window_start) from conflicting.
+AlertSchema.index({ group_key: 1, status: 1, window_start: 1 }, { unique: true, sparse: true });
 
 export const Alert = mongoose.model('Alert', AlertSchema);
