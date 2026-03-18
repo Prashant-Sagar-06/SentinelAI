@@ -5,6 +5,7 @@ WORKDIR /app
 COPY package.json ./
 RUN npm install
 
+COPY components ./components
 COPY pages ./pages
 COPY styles ./styles
 COPY next.config.js ./next.config.js

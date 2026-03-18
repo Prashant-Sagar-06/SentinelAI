@@ -11,6 +11,8 @@ import {
   YAxis,
 } from 'recharts';
 
+import AttackMap from '../components/AttackMap';
+
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
 
 function startOfLocalDayIso() {
@@ -80,7 +82,9 @@ function HealthRow({ name, status = 'Unknown' }) {
   const pill =
     status === 'OK'
       ? 'bg-emerald-400/10 text-emerald-200 ring-1 ring-emerald-500/20'
-      : 'bg-slate-400/10 text-slate-200 ring-1 ring-slate-500/20';
+      : status === 'Down'
+        ? 'bg-red-400/10 text-red-200 ring-1 ring-red-500/20'
+        : 'bg-slate-400/10 text-slate-200 ring-1 ring-slate-500/20';
 
   return (
     <div className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2">
@@ -116,10 +120,57 @@ export default function Dashboard() {
   const [logsTodayTotal, setLogsTodayTotal] = useState(0);
   const [refreshedAt, setRefreshedAt] = useState(null);
 
-  const authHeader = useMemo(() => {
-    if (!token) return {};
-    return { authorization: `Bearer ${token}` };
+  const [systemHealth, setSystemHealth] = useState(null);
+  const [healthError, setHealthError] = useState('');
+  const [healthRefreshedAt, setHealthRefreshedAt] = useState(null);
+
+  useEffect(() => {
+    if (!token) {
+      setSystemHealth(null);
+      setHealthError('');
+      setHealthRefreshedAt(null);
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    let interval;
+
+    async function loadHealth() {
+      try {
+        setHealthError('');
+        const res = await fetch(`${API_BASE}/api/system-health`, {
+          signal: controller.signal,
+          headers: {
+            authorization: `Bearer ${token}`,
+            accept: 'application/json',
+          },
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json?.error || 'Failed to load system health');
+        setSystemHealth(json);
+        setHealthRefreshedAt(new Date());
+      } catch (e) {
+        if (e?.name === 'AbortError') return;
+        setHealthError(e?.message || 'Failed to load system health');
+        setSystemHealth(null);
+      }
+    }
+
+    loadHealth();
+    interval = setInterval(loadHealth, 10_000);
+
+    return () => {
+      controller.abort();
+      if (interval) clearInterval(interval);
+    };
   }, [token]);
+
+  function healthStatusLabel(v) {
+    const s = String(v ?? '').toLowerCase();
+    if (s === 'ok' || s === 'true') return 'OK';
+    if (s === 'down' || s === 'false') return 'Down';
+    return 'Unknown';
+  }
 
   async function loadAll(currentToken) {
     setLoading(true);
@@ -272,56 +323,59 @@ export default function Dashboard() {
           <StatCard title="Logs Today" value={formatCompact(stats.logsToday)} sub="Local time window" tone="emerald" />
         </div>
 
-        <div className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-3">
-          <div className="xl:col-span-2">
-            <Panel title="Alerts Over Time" right="Last 24 hours">
-              <div className="h-64">
-                {mounted ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={series} margin={{ top: 8, right: 8, bottom: 0, left: -10 }}>
-                      <defs>
-                        <linearGradient id="alertsFill" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#38bdf8" stopOpacity={0.25} />
-                          <stop offset="100%" stopColor="#38bdf8" stopOpacity={0.02} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid stroke="#1f2937" strokeDasharray="4 4" />
-                      <XAxis
-                        dataKey="time"
-                        tick={{ fill: '#94a3b8', fontSize: 12 }}
-                        axisLine={{ stroke: '#334155' }}
-                        tickLine={false}
-                      />
-                      <YAxis
-                        tick={{ fill: '#94a3b8', fontSize: 12 }}
-                        axisLine={{ stroke: '#334155' }}
-                        tickLine={false}
-                        allowDecimals={false}
-                      />
-                      <Tooltip content={<TooltipContent />} />
-                      <Area type="monotone" dataKey="alerts" stroke="#38bdf8" fill="url(#alertsFill)" strokeWidth={2} />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="flex h-full items-center justify-center text-xs text-slate-500">Loading chart…</div>
-                )}
-              </div>
-            </Panel>
-          </div>
+        <div className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-2">
+          <Panel title="Alerts Over Time" right="Last 24 hours">
+            <div className="h-64">
+              {mounted ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={series} margin={{ top: 8, right: 8, bottom: 0, left: -10 }}>
+                    <defs>
+                      <linearGradient id="alertsFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#38bdf8" stopOpacity={0.25} />
+                        <stop offset="100%" stopColor="#38bdf8" stopOpacity={0.02} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid stroke="#1f2937" strokeDasharray="4 4" />
+                    <XAxis
+                      dataKey="time"
+                      tick={{ fill: '#94a3b8', fontSize: 12 }}
+                      axisLine={{ stroke: '#334155' }}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      tick={{ fill: '#94a3b8', fontSize: 12 }}
+                      axisLine={{ stroke: '#334155' }}
+                      tickLine={false}
+                      allowDecimals={false}
+                    />
+                    <Tooltip content={<TooltipContent />} />
+                    <Area type="monotone" dataKey="alerts" stroke="#38bdf8" fill="url(#alertsFill)" strokeWidth={2} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex h-full items-center justify-center text-xs text-slate-500">Loading chart…</div>
+              )}
+            </div>
+          </Panel>
 
-          <div className="xl:col-span-1">
-            <Panel title="System Health">
-              <div className="grid gap-2">
-                <HealthRow name="Worker" status="Unknown" />
-                <HealthRow name="MongoDB" status="Unknown" />
-                <HealthRow name="Redis" status="Unknown" />
-                <HealthRow name="AI Engine" status="Unknown" />
-              </div>
-              <div className="mt-3 text-xs text-slate-400">
-                Placeholders for service status.
-              </div>
-            </Panel>
-          </div>
+          <Panel title="Cyber Attack Map" right="Top 50 attacking IPs">
+            <AttackMap token={token} />
+          </Panel>
+        </div>
+
+        <div className="mt-6">
+          <Panel title="System Health" right={healthRefreshedAt ? `Updated ${healthRefreshedAt.toLocaleTimeString()}` : ''}>
+            <div className="grid gap-2">
+              <HealthRow name="Backend" status={healthStatusLabel(systemHealth?.backend?.status)} />
+              <HealthRow name="Worker" status={healthStatusLabel(systemHealth?.worker?.status)} />
+              <HealthRow name="MongoDB" status={healthStatusLabel(systemHealth?.mongo?.status)} />
+              <HealthRow name="Redis" status={healthStatusLabel(systemHealth?.redis?.status)} />
+              <HealthRow name="AI Engine" status={healthStatusLabel(systemHealth?.ai_engine?.status)} />
+            </div>
+            {healthError ? (
+              <div className="mt-3 text-xs text-red-200">{healthError}</div>
+            ) : null}
+          </Panel>
         </div>
 
         <div className="mt-6">

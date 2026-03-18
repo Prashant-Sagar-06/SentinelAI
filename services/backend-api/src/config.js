@@ -11,6 +11,8 @@ export const config = {
   corsOrigin: process.env.CORS_ORIGIN ?? 'http://localhost:3000',
   rateLimitPerMinute: Number(process.env.RATE_LIMIT_PER_MINUTE ?? 120),
 
+  aiEngineUrl: process.env.AI_ENGINE_URL ?? '',
+
   copilotProvider: process.env.COPILOT_PROVIDER ?? 'mock',
   openaiApiKey: process.env.OPENAI_API_KEY,
   openaiModel: process.env.OPENAI_MODEL ?? 'gpt-4o-mini',
