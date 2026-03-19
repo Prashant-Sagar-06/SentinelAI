@@ -8,6 +8,7 @@ import { Alert } from './models/Alert.js';
 import { Incident } from './models/Incident.js';
 import { redisConnectionFromUrl } from './redis.js';
 import { lookupThreatIntel } from './lib/threatIntel.js';
+import { startAlertEngine } from './lib/alertService.js';
 
 requireEnv();
 await connectMongo();
@@ -368,3 +369,6 @@ worker.on('failed', (job, err) => {
 
 // eslint-disable-next-line no-console
 console.log('worker started');
+
+// Rule-based intelligent alerts (runs on a timer, independent of job processing)
+startAlertEngine({ tickMs: 10_000 });

@@ -3,9 +3,14 @@ import mongoose from 'mongoose';
 const AlertSchema = new mongoose.Schema(
   {
     event_id: { type: mongoose.Schema.Types.ObjectId, required: true, index: true, ref: 'LogEvent' },
+
+    // ---- Intelligent Alert Engine (rule-based) fields ----
+    type: { type: String, index: true },
+    message: { type: String },
+    metadata: { type: mongoose.Schema.Types.Mixed },
     title: { type: String, required: true },
     severity: { type: String, required: true, enum: ['low', 'medium', 'high', 'critical'], index: true },
-    status: { type: String, required: true, enum: ['open', 'ack', 'closed'], default: 'open', index: true },
+    status: { type: String, required: true, enum: ['open', 'ack', 'closed', 'resolved'], default: 'open', index: true },
     threat_type: { type: String, required: true, index: true },
     group_key: { type: String, required: true, index: true },
     reason: { type: String, required: true },

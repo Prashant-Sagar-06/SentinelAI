@@ -6,7 +6,7 @@ const LogEventSchema = new mongoose.Schema(
     source: { type: String, required: true, index: true },
     event_type: { type: String, required: true, index: true },
     message: { type: String },
-    status: { type: String },
+    status: { type: String, index: true },
     severity_hint: { type: String },
     tenant_id: { type: String, default: 'default', index: true },
     ingest_id: { type: String, index: true },

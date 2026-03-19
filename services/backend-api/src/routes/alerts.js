@@ -36,7 +36,10 @@ alertsRouter.get('/', async (req, res, next) => {
     const cursor = q.cursor ? new Date(q.cursor) : null;
 
     const query = {};
+    // Default behavior for this endpoint: return active alerts.
+    // Clients can override by specifying an explicit status.
     if (q.status) query.status = q.status;
+    else query.status = 'open';
     if (q.severity) query.severity = q.severity;
     if (cursor) query.createdAt = { $lt: cursor };
 
