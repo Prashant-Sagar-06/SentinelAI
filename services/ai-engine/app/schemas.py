@@ -54,3 +54,18 @@ class AnalyzeResponse(BaseModel):
     threat_type: str
     explanations: List[str]
     features: Optional[Dict[str, Any]] = None
+
+
+class DetectAnomalyRequest(BaseModel):
+    requests_per_minute: float = Field(ge=0.0)
+    avg_latency: float = Field(ge=0.0)
+    error_rate: float = Field(ge=0.0, le=1.0)
+    unique_ips: float = Field(ge=0.0)
+
+
+class DetectAnomalyResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
+    anomaly: bool
+    score: float = Field(ge=0.0, le=1.0)
+    reason: str

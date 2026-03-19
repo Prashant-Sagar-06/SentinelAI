@@ -9,6 +9,7 @@ import { Incident } from './models/Incident.js';
 import { redisConnectionFromUrl } from './redis.js';
 import { lookupThreatIntel } from './lib/threatIntel.js';
 import { startAlertEngine } from './lib/alertService.js';
+import { startAnomalyEngine } from './lib/anomalyService.js';
 
 requireEnv();
 await connectMongo();
@@ -372,3 +373,6 @@ console.log('worker started');
 
 // Rule-based intelligent alerts (runs on a timer, independent of job processing)
 startAlertEngine({ tickMs: 10_000 });
+
+// AI-based anomaly detection (runs on a timer, independent of job processing)
+startAnomalyEngine({ tickMs: 10_000 });

@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 
-from .schemas import AnalyzeRequest, AnalyzeResponse
+from .anomaly import detect_anomaly
+from .schemas import AnalyzeRequest, AnalyzeResponse, DetectAnomalyRequest, DetectAnomalyResponse
 from .threat_intel import classify_source_ip
 from .threats import assess_threat
 
@@ -71,4 +72,19 @@ def analyze(req: AnalyzeRequest):
         threat_type=threat_type,
         explanations=explanations,
         features=features,
+    )
+
+
+@app.post("/detect-anomaly", response_model=DetectAnomalyResponse)
+def detect_anomaly_endpoint(req: DetectAnomalyRequest):
+    result = detect_anomaly(
+        requests_per_minute=float(req.requests_per_minute),
+        avg_latency=float(req.avg_latency),
+        error_rate=float(req.error_rate),
+        unique_ips=float(req.unique_ips),
+    )
+    return DetectAnomalyResponse(
+        anomaly=bool(result.get("anomaly")),
+        score=float(result.get("score", 0.0)),
+        reason=str(result.get("reason", "")),
     )
