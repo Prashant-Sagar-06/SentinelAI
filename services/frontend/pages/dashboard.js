@@ -124,6 +124,10 @@ export default function Dashboard() {
   const [healthError, setHealthError] = useState('');
   const [healthRefreshedAt, setHealthRefreshedAt] = useState(null);
 
+  const [perfMetrics, setPerfMetrics] = useState(null);
+  const [perfError, setPerfError] = useState('');
+  const [perfRefreshedAt, setPerfRefreshedAt] = useState(null);
+
   useEffect(() => {
     if (!token) {
       setSystemHealth(null);
@@ -164,6 +168,59 @@ export default function Dashboard() {
       if (interval) clearInterval(interval);
     };
   }, [token]);
+
+  useEffect(() => {
+    if (!token) {
+      setPerfMetrics(null);
+      setPerfError('');
+      setPerfRefreshedAt(null);
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    let interval;
+
+    async function loadPerf() {
+      try {
+        setPerfError('');
+        const res = await fetch(`${API_BASE}/api/metrics/summary`, {
+          signal: controller.signal,
+          headers: {
+            authorization: `Bearer ${token}`,
+            accept: 'application/json',
+          },
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json?.error || 'Failed to load performance metrics');
+        setPerfMetrics(json);
+        setPerfRefreshedAt(new Date());
+      } catch (e) {
+        if (e?.name === 'AbortError') return;
+        setPerfError(e?.message || 'Failed to load performance metrics');
+        setPerfMetrics(null);
+      }
+    }
+
+    loadPerf();
+    interval = setInterval(loadPerf, 10_000);
+
+    return () => {
+      controller.abort();
+      if (interval) clearInterval(interval);
+    };
+  }, [token]);
+
+  function formatPercent(v) {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return '-';
+    return `${n.toFixed(1)}%`;
+  }
+
+  function formatMs(v) {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return '-';
+    return `${Math.round(n)} ms`;
+  }
 
   function healthStatusLabel(v) {
     const s = String(v ?? '').toLowerCase();
@@ -375,6 +432,38 @@ export default function Dashboard() {
             {healthError ? (
               <div className="mt-3 text-xs text-red-200">{healthError}</div>
             ) : null}
+          </Panel>
+        </div>
+
+        <div className="mt-6">
+          <Panel title="Performance Metrics" right={perfRefreshedAt ? `Updated ${perfRefreshedAt.toLocaleTimeString()}` : ''}>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <StatCard
+                title="Requests / min"
+                value={formatCompact(perfMetrics?.requests_per_minute)}
+                sub="Last 60 seconds"
+                tone="cyan"
+              />
+              <StatCard
+                title="Error Rate"
+                value={formatPercent(perfMetrics?.error_rate)}
+                sub="status = error"
+                tone={Number(perfMetrics?.error_rate ?? 0) > 20 ? 'red' : 'slate'}
+              />
+              <StatCard
+                title="Avg Latency"
+                value={formatMs(perfMetrics?.avg_latency_ms)}
+                sub="attributes.latency"
+                tone="amber"
+              />
+              <StatCard
+                title="Performance Anomaly"
+                value={perfMetrics?.anomaly ? 'YES' : 'NO'}
+                sub={perfMetrics?.anomaly ? 'Investigate spike' : 'Within baseline'}
+                tone={perfMetrics?.anomaly ? 'red' : 'emerald'}
+              />
+            </div>
+            {perfError ? <div className="mt-3 text-xs text-red-200">{perfError}</div> : null}
           </Panel>
         </div>
 

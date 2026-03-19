@@ -17,6 +17,9 @@ const AlertSchema = new mongoose.Schema(
     },
     actor: { type: String, index: true },
 
+    assigned_to: { type: String, default: null, index: true },
+    assigned_at: { type: Date, default: null },
+
     // Dedup/grouping fields
     event_count: { type: Number, default: 1 },
     first_seen: { type: Date, default: () => new Date() },

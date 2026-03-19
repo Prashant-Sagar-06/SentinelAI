@@ -18,6 +18,7 @@ import { copilotRouter } from './routes/copilot.js';
 import { incidentsRouter } from './routes/incidents.js';
 import { attackMapRouter } from './routes/attackMap.js';
 import { createSystemHealthRouter } from './routes/systemHealth.js';
+import { metricsRouter } from './routes/metrics.js';
 import { initSocket, broadcastAlert } from './lib/socket.js';
 
 requireEnv();
@@ -79,6 +80,9 @@ app.use('/api/attack-map', attackMapRouter);
 
 // System health
 app.use('/api/system-health', createSystemHealthRouter(analysisQueue));
+
+// Metrics
+app.use('/api/metrics', metricsRouter);
 
 // Copilot
 app.use('/api/copilot', copilotRouter);
