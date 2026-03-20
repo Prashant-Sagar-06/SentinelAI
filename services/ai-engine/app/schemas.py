@@ -69,3 +69,53 @@ class DetectAnomalyResponse(BaseModel):
     anomaly: bool
     score: float = Field(ge=0.0, le=1.0)
     reason: str
+
+
+class CopilotAlert(BaseModel):
+    alert_id: Optional[str] = None
+    title: Optional[str] = None
+
+    # SentinelAI alert fields (support both threat alerts and rule/anomaly alerts)
+    type: Optional[str] = None
+    threat_type: Optional[str] = None
+    severity: Optional[str] = None
+    status: Optional[str] = None
+    message: Optional[str] = None
+    reason: Optional[str] = None
+
+    source_ip: Optional[str] = None
+    actor: Optional[str] = None
+    event_count: Optional[int] = None
+
+    first_seen: Optional[datetime] = None
+    last_seen: Optional[datetime] = None
+    createdAt: Optional[datetime] = None
+    updatedAt: Optional[datetime] = None
+
+    explanations: List[str] = Field(default_factory=list)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class CopilotAnomaly(BaseModel):
+    type: Optional[str] = None
+    score: Optional[float] = None
+    severity: Optional[str] = None
+    message: Optional[str] = None
+    reason: Optional[str] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    createdAt: Optional[datetime] = None
+
+
+class AnalyzeAlertRequest(BaseModel):
+    alert: CopilotAlert
+    anomaly: Optional[CopilotAnomaly] = None
+
+
+class AnalyzeAlertResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
+    analysis: str
+    risk_level: Optional[RiskLevel] = None
+    evidence: List[str] = Field(default_factory=list)
+    recommended_actions: List[str] = Field(default_factory=list)
+    threat_intel: Optional[Dict[str, Any]] = None

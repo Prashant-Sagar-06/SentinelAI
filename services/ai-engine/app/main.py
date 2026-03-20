@@ -3,7 +3,14 @@ from __future__ import annotations
 from fastapi import FastAPI
 
 from .anomaly import detect_anomaly
-from .schemas import AnalyzeRequest, AnalyzeResponse, DetectAnomalyRequest, DetectAnomalyResponse
+from .schemas import (
+    AnalyzeAlertRequest,
+    AnalyzeAlertResponse,
+    AnalyzeRequest,
+    AnalyzeResponse,
+    DetectAnomalyRequest,
+    DetectAnomalyResponse,
+)
 from .threat_intel import classify_source_ip
 from .threats import assess_threat
 
@@ -87,4 +94,157 @@ def detect_anomaly_endpoint(req: DetectAnomalyRequest):
         anomaly=bool(result.get("anomaly")),
         score=float(result.get("score", 0.0)),
         reason=str(result.get("reason", "")),
+    )
+
+
+@app.post("/analyze-alert", response_model=AnalyzeAlertResponse)
+def analyze_alert(req: AnalyzeAlertRequest):
+    alert = req.alert
+    anomaly = req.anomaly
+
+    alert_type = (alert.type or "").strip()
+    threat_type = (alert.threat_type or "").strip()
+    severity = (alert.severity or "").strip().lower()
+    status = (alert.status or "").strip().lower()
+
+    source_ip = (alert.source_ip or "").strip() or None
+
+    intel_payload = None
+    intel = classify_source_ip(source_ip) if source_ip else None
+    if intel is not None:
+        intel_payload = {
+            "threat_type": intel.threat_type,
+            "risk_level": str(intel.risk_level),
+            "risk_score": float(intel.risk_score),
+            "explanations": list(intel.explanations),
+        }
+
+    primary = alert.title or alert.message or "Alert requires investigation."
+
+    context_bits = []
+    if alert_type:
+        context_bits.append(f"type={alert_type}")
+    if threat_type:
+        context_bits.append(f"threat_type={threat_type}")
+    if severity:
+        context_bits.append(f"severity={severity}")
+    if status:
+        context_bits.append(f"status={status}")
+    if context_bits:
+        primary = f"{primary} ({', '.join(context_bits)})"
+
+    analysis_lines = [primary]
+
+    if intel is not None:
+        analysis_lines.append(
+            "Source IP matches threat intel; treat as higher confidence until disproven."
+        )
+    elif source_ip:
+        analysis_lines.append(
+            "Source IP has no known threat-intel match in the local feed; rely on observed behavior and logs."
+        )
+
+    if anomaly is not None and (anomaly.reason or anomaly.message):
+        analysis_lines.append(
+            f"Related anomaly context: {(anomaly.reason or anomaly.message or '').strip()}"
+        )
+
+    if alert.reason and alert.reason.strip():
+        analysis_lines.append(f"Alert reason: {alert.reason.strip()}")
+
+    evidence: list[str] = []
+    for e in (alert.explanations or [])[:12]:
+        if isinstance(e, str) and e.strip():
+            evidence.append(e.strip())
+
+    if intel is not None:
+        for e in list(intel.explanations)[:8]:
+            if isinstance(e, str) and e.strip() and e.strip() not in evidence:
+                evidence.append(e.strip())
+
+    if anomaly is not None:
+        if anomaly.reason and isinstance(anomaly.reason, str) and anomaly.reason.strip():
+            if anomaly.reason.strip() not in evidence:
+                evidence.append(anomaly.reason.strip())
+
+    if source_ip and not any("source ip" in x.lower() for x in evidence):
+        evidence.append(f"Source IP: {source_ip}")
+    if alert.actor and not any("actor" in x.lower() for x in evidence):
+        evidence.append(f"Actor: {alert.actor}")
+
+    recommended_actions: list[str] = []
+    if intel is not None:
+        recommended_actions.extend(
+            [
+                "Block or rate-limit the source IP at the edge/WAF.",
+                "Search for additional activity from this IP across the environment.",
+            ]
+        )
+
+    if "brute" in threat_type.lower() or "brute" in alert_type.lower():
+        recommended_actions.extend(
+            [
+                "Review authentication logs for failed login bursts and targeted accounts.",
+                "Enforce MFA and lockout/rate limits for impacted accounts.",
+            ]
+        )
+    elif "exfil" in threat_type.lower() or "exfil" in alert_type.lower():
+        recommended_actions.extend(
+            [
+                "Inspect data access and egress logs for unusual downloads or transfers.",
+                "Temporarily restrict data export permissions for suspicious users/services.",
+            ]
+        )
+    elif "error" in alert_type.lower() or "latency" in alert_type.lower():
+        recommended_actions.extend(
+            [
+                "Check service health dashboards (latency, error rate) and recent deploys.",
+                "Correlate the spike window with upstream dependencies and infrastructure events.",
+            ]
+        )
+
+    recommended_actions.extend(
+        [
+            "Pull the correlated logs for the time window and validate the triggering pattern.",
+            "If confirmed, open or update an incident and document findings.",
+        ]
+    )
+
+    severity_rank = {"low": 0, "medium": 1, "high": 2, "critical": 3}
+
+    base_risk = severity if severity in severity_rank else "low"
+    intel_risk = str(intel.risk_level) if intel is not None else None
+    if intel_risk not in severity_rank:
+        intel_risk = None
+
+    anomaly_score = None
+    if anomaly is not None and anomaly.score is not None:
+        try:
+            anomaly_score = float(anomaly.score)
+        except Exception:
+            anomaly_score = None
+
+    derived_risk = base_risk
+    if intel_risk is not None and severity_rank[intel_risk] > severity_rank[derived_risk]:
+        derived_risk = intel_risk
+
+    if anomaly_score is not None:
+        if anomaly_score >= 0.9:
+            derived_risk = "critical" if severity_rank[derived_risk] < 3 else derived_risk
+        elif anomaly_score >= 0.75:
+            derived_risk = "high" if severity_rank[derived_risk] < 2 else derived_risk
+
+    # De-dupe while preserving order
+    seen_actions = set()
+    recommended_actions = [x for x in recommended_actions if not (x in seen_actions or seen_actions.add(x))]
+
+    seen_evidence = set()
+    evidence = [x for x in evidence if not (x in seen_evidence or seen_evidence.add(x))]
+
+    return AnalyzeAlertResponse(
+        analysis="\n".join(analysis_lines).strip(),
+        risk_level=derived_risk,  # type: ignore[arg-type]
+        evidence=evidence[:20],
+        recommended_actions=recommended_actions[:20],
+        threat_intel=intel_payload,
     )

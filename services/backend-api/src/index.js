@@ -14,6 +14,7 @@ import { authRouter } from './routes/auth.js';
 import { healthRouter } from './routes/health.js';
 import { createLogsRouter } from './routes/logs.js';
 import { alertsRouter } from './routes/alerts.js';
+import { anomaliesRouter } from './routes/anomalies.js';
 import { copilotRouter } from './routes/copilot.js';
 import { incidentsRouter } from './routes/incidents.js';
 import { attackMapRouter } from './routes/attackMap.js';
@@ -71,6 +72,9 @@ app.use('/api/logs', createLogsRouter(analysisQueue));
 
 // Alerts
 app.use('/api/alerts', alertsRouter);
+
+// Anomalies
+app.use('/api/anomalies', anomaliesRouter);
 
 // Incidents
 app.use('/api/incidents', incidentsRouter);
