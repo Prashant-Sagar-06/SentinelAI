@@ -27,6 +27,8 @@ export function normalizeCopilotPayload(payload) {
     analysis: typeof payload.analysis === 'string' ? payload.analysis : JSON.stringify(payload),
     evidence: normalizeStringArray(payload.evidence),
     recommended_actions: normalizeStringArray(payload.recommended_actions),
+    risk_level: typeof payload.risk_level === 'string' ? payload.risk_level : null,
+    threat_intel: payload.threat_intel && typeof payload.threat_intel === 'object' ? payload.threat_intel : null,
   };
 }
 
