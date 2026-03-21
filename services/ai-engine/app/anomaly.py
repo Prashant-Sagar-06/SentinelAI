@@ -14,6 +14,7 @@ class AnomalyResult:
     anomaly: bool
     score: float
     reason: str
+    confidence: float = 0.0
 
 
 def _clamp01(x: float) -> float:
@@ -67,8 +68,15 @@ class RollingAnomalyDetector:
             self._history.append((float(rpm), float(avg_latency), float(error_rate), float(unique_ips)))
             hist = list(self._history)
 
-        if len(hist) < 10:
-            return AnomalyResult(anomaly=False, score=0.0, reason="Insufficient history for anomaly detection")
+        total_requests = len(hist)
+
+        if total_requests < 10:
+            return AnomalyResult(
+                anomaly=False,
+                score=0.0,
+                reason="Insufficient data for reliable anomaly detection",
+                confidence=0.0,
+            )
 
         X = np.array(hist, dtype=float)
         mu = X.mean(axis=0)
@@ -103,14 +111,20 @@ class RollingAnomalyDetector:
         z_score_norm = _clamp01(max(0.0, max_z) / 6.0)
         score = _clamp01(max(z_score_norm, if_score))
 
-        anomaly = bool(triggered) or score >= 0.6
+        # Dynamic threshold: be more conservative early in the window.
+        score_threshold = 0.75 if len(hist) < 30 else 0.6
+        anomaly = bool(triggered) or score >= score_threshold
 
         if triggered:
             reason = "; ".join(triggered)
         else:
             reason = f"IsolationForest score={if_score:.3f}, z_norm={z_score_norm:.3f}"
 
-        return AnomalyResult(anomaly=anomaly, score=score, reason=reason)
+        confidence = _clamp01(float(score))
+        if triggered:
+            confidence = _clamp01(max(confidence, 0.85))
+
+        return AnomalyResult(anomaly=anomaly, score=score, reason=reason, confidence=confidence)
 
 
 _detector = RollingAnomalyDetector(window_size=180)
@@ -123,4 +137,4 @@ def detect_anomaly(*, requests_per_minute: float, avg_latency: float, error_rate
         error_rate=error_rate,
         unique_ips=unique_ips,
     )
-    return {"anomaly": res.anomaly, "score": res.score, "reason": res.reason}
+    return {"anomaly": res.anomaly, "score": res.score, "reason": res.reason, "confidence": res.confidence}

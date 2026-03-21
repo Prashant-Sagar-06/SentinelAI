@@ -18,7 +18,6 @@ app = FastAPI(title="SentinelAI AI Engine", version="0.1.0")
 
 MODEL_VERSION = "heuristic-v1"
 
-
 @app.get("/health")
 def health():
     return {"ok": True, "model_version": MODEL_VERSION}
