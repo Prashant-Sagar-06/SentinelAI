@@ -39,9 +39,8 @@ Worker-specific:
 
 Copilot (optional):
 
-- `COPILOT_PROVIDER` (`mock` | `openai` | `groq`)
-- `OPENAI_API_KEY`, `OPENAI_MODEL`
-- `GROQ_API_KEY`, `GROQ_MODEL`
+- `COPILOT_PROVIDER` (`mock` | `grok`)
+- `XAI_API_KEY`, `XAI_MODEL`
 - `COPILOT_RATE_LIMIT_PER_MINUTE`
 
 ## Production notes

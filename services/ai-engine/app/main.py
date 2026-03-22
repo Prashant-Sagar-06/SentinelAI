@@ -1,6 +1,12 @@
 from __future__ import annotations
 
+import logging
+import os
+import time
+import uuid
+
 from fastapi import FastAPI
+from pythonjsonlogger import jsonlogger
 
 from .anomaly import detect_anomaly
 from .schemas import (
@@ -18,8 +24,63 @@ app = FastAPI(title="SentinelAI AI Engine", version="0.1.0")
 
 MODEL_VERSION = "heuristic-v1"
 
+
+def _configure_logging() -> logging.Logger:
+    logger = logging.getLogger("ai-engine")
+    if logger.handlers:
+        return logger
+
+    level_name = os.getenv("LOG_LEVEL", "INFO").upper()
+    level = getattr(logging, level_name, logging.INFO)
+    logger.setLevel(level)
+
+    handler = logging.StreamHandler()
+    formatter = jsonlogger.JsonFormatter("%(asctime)s %(levelname)s %(name)s %(message)s")
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    logger.propagate = False
+    return logger
+
+
+log = _configure_logging()
+
+
+@app.middleware("http")
+async def request_logging_middleware(request, call_next):
+    request_id = request.headers.get("x-request-id") or uuid.uuid4().hex[:12]
+    started = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        duration_ms = int((time.perf_counter() - started) * 1000)
+        log.exception(
+            "request_failed",
+            extra={
+                "request_id": request_id,
+                "method": request.method,
+                "path": str(request.url.path),
+                "duration_ms": duration_ms,
+            },
+        )
+        raise
+
+    duration_ms = int((time.perf_counter() - started) * 1000)
+    response.headers["x-request-id"] = request_id
+    log.info(
+        "request_completed",
+        extra={
+            "request_id": request_id,
+            "method": request.method,
+            "path": str(request.url.path),
+            "status_code": response.status_code,
+            "duration_ms": duration_ms,
+        },
+    )
+    return response
+
 @app.get("/health")
 def health():
+    log.info("health_check", extra={"model_version": MODEL_VERSION})
     return {"ok": True, "model_version": MODEL_VERSION}
 
 
