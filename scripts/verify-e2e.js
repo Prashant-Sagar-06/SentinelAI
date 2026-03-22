@@ -17,7 +17,7 @@ Env overrides:
 */
 
 const API_BASE = process.env.API_BASE || 'http://localhost:4000';
-const EMAIL = process.env.EMAIL || 'admin@example.com';
+const DEFAULT_EMAIL = process.env.EMAIL || '';
 const PASSWORD = process.env.PASSWORD || 'password123';
 const TIMEOUT_MS = Number(process.env.TIMEOUT_MS || 20_000);
 const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS || 500);
@@ -48,34 +48,78 @@ async function requestJson(path, { method = 'GET', token, body } = {}) {
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 
-  const data = await readJson(res);
-  return { status: res.status, ok: res.ok, data };
+  const raw = await readJson(res);
+
+  // Canonical API shape: { data: ..., error: null } OR { data: null, error: { message, code, ... } }
+  // Backward-compat: allow older endpoints returning payload directly.
+  const envelope = (() => {
+    if (raw && typeof raw === 'object') {
+      if ('data' in raw && 'error' in raw) return raw;
+
+      // Legacy error shape: { error: '...', code: '...', requestId: '...' }
+      if (typeof raw.error === 'string' && raw.error) {
+        return {
+          data: null,
+          error: {
+            message: raw.error,
+            code: raw.code || 'request_error',
+            ...(raw.requestId ? { requestId: raw.requestId } : {}),
+            ...(raw.details !== undefined ? { details: raw.details } : {}),
+          },
+        };
+      }
+    }
+    return { data: raw, error: null };
+  })();
+
+  return { status: res.status, ok: res.ok, data: envelope };
 }
 
 async function ensureLogin() {
+  const rand = Math.floor(Math.random() * 1_000_000);
+  const preferredEmail = DEFAULT_EMAIL || `e2e-${rand}@example.com`;
+
   const login = await requestJson('/api/auth/login', {
     method: 'POST',
-    body: { email: EMAIL, password: PASSWORD },
+    body: { email: preferredEmail, password: PASSWORD },
   });
 
-  if (login.ok && login.data?.token) return login.data.token;
+  if (login.ok && login.data?.data?.token) return login.data.data.token;
 
   // If login failed, try register then login again.
-  await requestJson('/api/auth/register', {
+  const reg = await requestJson('/api/auth/register', {
     method: 'POST',
-    body: { email: EMAIL, password: PASSWORD },
+    body: { email: preferredEmail, password: PASSWORD },
   });
+
+  // If the preferred email is already in use with a different password,
+  // fall back to a unique email to keep the E2E script deterministic.
+  const finalEmail = reg.ok
+    ? preferredEmail
+    : DEFAULT_EMAIL
+      ? preferredEmail
+      : `e2e-${rand}-alt@example.com`;
+
+  if (!reg.ok && finalEmail !== preferredEmail) {
+    const reg2 = await requestJson('/api/auth/register', {
+      method: 'POST',
+      body: { email: finalEmail, password: PASSWORD },
+    });
+    if (!reg2.ok) {
+      throw new Error(`Register failed: ${JSON.stringify(reg2.data)}`);
+    }
+  }
 
   const login2 = await requestJson('/api/auth/login', {
     method: 'POST',
-    body: { email: EMAIL, password: PASSWORD },
+    body: { email: finalEmail, password: PASSWORD },
   });
 
-  if (!login2.ok || !login2.data?.token) {
+  if (!login2.ok || !login2.data?.data?.token) {
     throw new Error(`Login failed: ${JSON.stringify(login2.data)}`);
   }
 
-  return login2.data.token;
+  return login2.data.data.token;
 }
 
 function buildBruteForceEvent() {
@@ -89,6 +133,7 @@ function buildBruteForceEvent() {
     source: 'auth-service',
     event_type: 'login_attempt',
     status: 'failed',
+    message: `Failed login attempt (user=${user}, ip=${ip})`,
     network: { ip, user_agent: 'verify-e2e.js' },
     actor: { user },
     attributes: { attempts: 120 },
@@ -113,7 +158,7 @@ async function main() {
     throw new Error(`Ingest failed (${ing.status}): ${JSON.stringify(ing.data)}`);
   }
 
-  const eventId = ing.data?.event_id;
+  const eventId = ing.data?.data?.event_id;
   if (!eventId) {
     throw new Error(`Ingest response missing event_id: ${JSON.stringify(ing.data)}`);
   }
@@ -126,28 +171,25 @@ async function main() {
   while (Date.now() < deadline) {
     const alerts = await requestJson('/api/alerts?limit=50', { token });
     if (alerts.ok) {
-      const items = Array.isArray(alerts.data?.items) ? alerts.data.items : [];
-      const match = items.find((a) => a?.event_id === eventId);
-
-      if (match) {
+      const items = Array.isArray(alerts.data?.data?.items) ? alerts.data.data.items : [];
+      const matches = items.filter((a) => a?.event_id === eventId);
+      if (matches.length) {
         const expectedThreat = 'brute_force_login';
         const expectedSeverity = 'critical';
 
-        if (match.threat_type !== expectedThreat) {
-          throw new Error(
-            `Alert threat_type mismatch for event_id=${eventId}. Expected ${expectedThreat}, got ${match.threat_type}`
-          );
-        }
-        if (match.severity !== expectedSeverity) {
-          throw new Error(
-            `Alert severity mismatch for event_id=${eventId}. Expected ${expectedSeverity}, got ${match.severity}`
-          );
-        }
+        const wanted = matches.find((a) => a?.threat_type === expectedThreat);
+        if (wanted) {
+          if (wanted.severity !== expectedSeverity) {
+            throw new Error(
+              `Alert severity mismatch for event_id=${eventId}. Expected ${expectedSeverity}, got ${wanted.severity}`
+            );
+          }
 
-        console.log(
-          `[verify-e2e] PASS: alert_id=${match._id} threat_type=${match.threat_type} severity=${match.severity}`
-        );
-        return;
+          console.log(
+            `[verify-e2e] PASS: alert_id=${wanted._id} threat_type=${wanted.threat_type} severity=${wanted.severity}`
+          );
+          return;
+        }
       }
     }
 
@@ -155,7 +197,7 @@ async function main() {
   }
 
   const latest = await requestJson('/api/alerts?limit=10', { token });
-  const sample = latest.ok ? latest.data?.items : latest.data;
+  const sample = latest.ok ? latest.data?.data?.items : latest.data;
   throw new Error(
     `Timed out after ${TIMEOUT_MS}ms waiting for alert for event_id=${eventId}. Sample alerts: ${JSON.stringify(sample)}`
   );
