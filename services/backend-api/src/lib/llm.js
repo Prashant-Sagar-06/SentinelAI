@@ -36,16 +36,31 @@ function getEnv(name) {
   return process.env[name];
 }
 
+function getXaiApiKey() {
+  // Preferred: XAI_API_KEY. Back-compat: GROK_API_KEY.
+  return getEnv('XAI_API_KEY') || getEnv('GROK_API_KEY');
+}
+
+function getXaiModel() {
+  // Preferred: XAI_MODEL. Back-compat: GROK_MODEL.
+  return getEnv('XAI_MODEL') || getEnv('GROK_MODEL') || 'grok-2-latest';
+}
+
+function getCopilotTimeoutMs() {
+  const raw = getEnv('COPILOT_TIMEOUT_MS') || getEnv('XAI_TIMEOUT_MS');
+  const n = Number(raw);
+  if (Number.isFinite(n) && n > 0) return Math.floor(n);
+  return 8000;
+}
+
 function resolveProvider() {
   const requested = (getEnv('COPILOT_PROVIDER') || '').toLowerCase();
   if (!requested) return 'mock';
 
-  if (requested === 'openai') {
-    return getEnv('OPENAI_API_KEY') ? 'openai' : 'mock';
-  }
-
-  if (requested === 'groq') {
-    return getEnv('GROQ_API_KEY') ? 'groq' : 'mock';
+  // Grok (xAI) only.
+  // Accept a couple of aliases for smoother upgrades.
+  if (requested === 'grok' || requested === 'xai' || requested === 'groq') {
+    return getXaiApiKey() ? 'grok' : 'mock';
   }
 
   if (requested === 'mock') return 'mock';
@@ -54,15 +69,24 @@ function resolveProvider() {
   return 'mock';
 }
 
-async function callChatCompletions({ baseUrl, apiKey, model, messages }) {
-  const res = await fetch(`${baseUrl}/chat/completions`, {
+async function callChatCompletions({ baseUrl, apiKey, model, messages, timeoutMs }) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), Math.max(1, Number(timeoutMs) || 1));
+
+  let res;
+  try {
+    res = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({ model, messages }),
-  });
+      body: JSON.stringify({ model, messages }),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
 
   const text = await res.text();
   if (!res.ok) {
@@ -138,23 +162,16 @@ export function buildSocMessages(safeAlert) {
 
 export async function generateCopilotResponse(messages) {
   const provider = resolveProvider();
+  const timeoutMs = getCopilotTimeoutMs();
 
   try {
-    if (provider === 'openai') {
+    if (provider === 'grok') {
       return await callChatCompletions({
-        baseUrl: 'https://api.openai.com/v1',
-        apiKey: getEnv('OPENAI_API_KEY'),
-        model: getEnv('OPENAI_MODEL') || 'gpt-4o-mini',
+        baseUrl: 'https://api.x.ai/v1',
+        apiKey: getXaiApiKey(),
+        model: getXaiModel(),
         messages,
-      });
-    }
-
-    if (provider === 'groq') {
-      return await callChatCompletions({
-        baseUrl: 'https://api.groq.com/openai/v1',
-        apiKey: getEnv('GROQ_API_KEY'),
-        model: getEnv('GROQ_MODEL') || 'llama3-70b-8192',
-        messages,
+        timeoutMs,
       });
     }
 
