@@ -1,14 +1,15 @@
 import http from 'http';
 import express from 'express';
 import cors from 'cors';
-import morgan from 'morgan';
-import rateLimit from 'express-rate-limit';
 
 import { config, requireEnv } from './config.js';
 import { connectMongo } from './db.js';
 import { createAnalysisQueue } from './queue.js';
 import { errorHandler } from './middleware/error.js';
 import { requireAuth } from './middleware/auth.js';
+import { apiLimiter } from './middleware/rateLimit.js';
+import { httpLogger, logger } from './lib/logger.js';
+import { ok, fail } from './lib/apiResponse.js';
 
 import { authRouter } from './routes/auth.js';
 import { healthRouter } from './routes/health.js';
@@ -23,85 +24,114 @@ import { metricsRouter } from './routes/metrics.js';
 import { responsesRouter } from './routes/responses.js';
 import { initSocket, broadcastAlert } from './lib/socket.js';
 
+import { LogEvent } from './models/LogEvent.js';
+import { MetricsMinute } from './models/MetricsMinute.js';
+import { Response } from './models/Response.js';
+import { Alert } from './models/Alert.js';
+import { Anomaly } from './models/Anomaly.js';
+import { AnomalyResult } from './models/AnomalyResult.js';
+import { Incident } from './models/Incident.js';
+
+// -------------------- INIT --------------------
 requireEnv();
 await connectMongo();
 
+// Ensure indexes
+await Promise.allSettled([
+  LogEvent.syncIndexes(),
+  MetricsMinute.syncIndexes(),
+  Alert.syncIndexes(),
+  Anomaly.syncIndexes(),
+  AnomalyResult.syncIndexes(),
+  Incident.syncIndexes(),
+  Response.syncIndexes(),
+]);
+
 const analysisQueue = createAnalysisQueue();
 
+// -------------------- APP --------------------
 const app = express();
+app.set('trust proxy', config.trustProxy);
+app.set('analysisQueue', analysisQueue);
+
+app.use(httpLogger);
 app.use(express.json({ limit: '2mb' }));
-app.use(morgan('combined'));
+
 app.use(
   cors({
-    origin: config.corsOrigin,
-    credentials: false,
+    origin: (origin, cb) => {
+      if (!origin) return cb(null, true);
+      const allowed =
+        config.corsOrigins.includes('*') ||
+        config.corsOrigins.includes(origin);
+      return cb(allowed ? null : new Error('CORS origin not allowed'), allowed);
+    },
+    credentials: true, // ✅ FIXED
   })
 );
 
-app.use(
-  rateLimit({
-    windowMs: 60_000,
-    limit: config.rateLimitPerMinute,
-    standardHeaders: 'draft-7',
-    legacyHeaders: false,
-  })
-);
-
+// -------------------- HEALTH --------------------
 app.use(healthRouter);
 
-// Worker/internal hooks (no JWT)
-app.post('/internal/broadcast/alert', async (req, res) => {
-  const secret = config.internalBroadcastSecret;
-  if (!secret) return res.status(503).json({ error: 'internal_broadcast_disabled' });
-  const provided = String(req.header('x-internal-secret') ?? '');
-  if (provided !== secret) return res.status(401).json({ error: 'unauthorized' });
-
-  // Keep it permissive; worker may send partial shapes.
-  const alert = req.body;
-  if (!alert || typeof alert !== 'object') return res.status(400).json({ error: 'invalid_body' });
-
-  broadcastAlert(alert);
-  return res.json({ ok: true });
+// -------------------- ROOT DEBUG --------------------
+app.get('/', (req, res) => {
+  return ok(res, { status: 'SentinelAI backend running' });
 });
 
+// -------------------- RATE LIMIT --------------------
+app.use(apiLimiter);
+
+// -------------------- INTERNAL --------------------
+app.post('/internal/broadcast/alert', async (req, res) => {
+  const secret = config.internalBroadcastSecret;
+
+  if (!secret) {
+    return fail(res, { status: 503, code: 'internal_broadcast_disabled', message: 'Internal broadcast disabled' });
+  }
+
+  const provided = String(req.header('x-internal-secret') ?? '');
+  if (provided !== secret) {
+    return fail(res, { status: 401, code: 'unauthorized', message: 'Unauthorized' });
+  }
+
+  const alert = req.body;
+  if (!alert || typeof alert !== 'object') {
+    return fail(res, { status: 400, code: 'invalid_body', message: 'Invalid body' });
+  }
+
+  broadcastAlert(alert);
+  return ok(res, { ok: true });
+});
+
+// -------------------- AUTH --------------------
 app.use('/api/auth', authRouter);
 
-// Protect everything else
+// -------------------- PROTECTED ROUTES --------------------
 app.use('/api', requireAuth);
 
-app.use('/api/logs', createLogsRouter(analysisQueue));
+// ✅ FIXED (no queue param)
+app.use('/api/logs', createLogsRouter());
 
-// Alerts
+// -------------------- CORE ROUTES --------------------
 app.use('/api/alerts', alertsRouter);
-
-// Anomalies
 app.use('/api/anomalies', anomaliesRouter);
-
-// Incidents
 app.use('/api/incidents', incidentsRouter);
-
-// Attack map
 app.use('/api/attack-map', attackMapRouter);
-
-// System health
 app.use('/api/system-health', createSystemHealthRouter(analysisQueue));
-
-// Metrics
 app.use('/api/metrics', metricsRouter);
-
-// Auto-responses
 app.use('/api/responses', responsesRouter);
-
-// Copilot
 app.use('/api/copilot', copilotRouter);
 
+// -------------------- ERROR HANDLER --------------------
 app.use(errorHandler);
 
-// Start server (http server required for Socket.IO)
+// -------------------- SERVER --------------------
 const server = http.createServer(app);
 initSocket(server);
 
 server.listen(config.port, '0.0.0.0', () => {
-  // eslint-disable-next-line no-console
-  console.log(`backend-api listening on :${config.port}`);
+  logger.info(
+    { port: config.port, env: config.nodeEnv },
+    'backend-api listening'
+  );
 });
