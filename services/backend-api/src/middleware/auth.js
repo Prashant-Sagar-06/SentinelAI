@@ -1,10 +1,11 @@
 import jwt from 'jsonwebtoken';
 import { config } from '../config.js';
+import { fail } from '../lib/apiResponse.js';
 
 export function requireAuth(req, res, next) {
   const header = req.headers.authorization;
   if (!header?.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'missing_token' });
+    return fail(res, { status: 401, code: 'missing_token', message: 'Missing token' });
   }
   const token = header.slice('Bearer '.length);
   try {
@@ -12,7 +13,7 @@ export function requireAuth(req, res, next) {
     req.user = payload;
     return next();
   } catch {
-    return res.status(401).json({ error: 'invalid_token' });
+    return fail(res, { status: 401, code: 'invalid_token', message: 'Invalid token' });
   }
 }
 
