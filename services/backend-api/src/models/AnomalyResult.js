@@ -2,7 +2,10 @@ import mongoose from 'mongoose';
 
 const AnomalyResultSchema = new mongoose.Schema(
   {
+    user_id: { type: String, default: null, index: true },
     event_id: { type: mongoose.Schema.Types.ObjectId, required: true, index: true, ref: 'LogEvent' },
+    // Minute bucket for easier joins/debugging (derived from LogEvent.timestamp)
+    timestamp_minute: { type: Date, default: null, index: true },
     model_version: { type: String, required: true },
     anomaly_score: { type: Number, required: true },
     risk_score: { type: Number, required: true },
@@ -14,5 +17,8 @@ const AnomalyResultSchema = new mongoose.Schema(
   },
   { versionKey: false }
 );
+
+AnomalyResultSchema.index({ user_id: 1, event_id: 1 });
+AnomalyResultSchema.index({ user_id: 1, timestamp_minute: -1 });
 
 export const AnomalyResult = mongoose.model('AnomalyResult', AnomalyResultSchema);
