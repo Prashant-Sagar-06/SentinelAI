@@ -1,8 +1,13 @@
 import mongoose from 'mongoose';
 
+import { config } from '../config.js';
+
 const LogEventSchema = new mongoose.Schema(
   {
-    timestamp: { type: Date, required: true, index: true },
+    user_id: { type: String, default: null, index: true },
+    timestamp: { type: Date, required: true },
+    // Canonical minute bucket derived from timestamp (UTC floored)
+    timestamp_minute: { type: Date, default: null, index: true },
     source: { type: String, required: true, index: true },
     event_type: { type: String, required: true, index: true },
     message: { type: String },
@@ -29,6 +34,10 @@ const LogEventSchema = new mongoose.Schema(
   { versionKey: false }
 );
 
+LogEventSchema.index({ user_id: 1, timestamp: -1 });
+LogEventSchema.index({ user_id: 1, timestamp_minute: -1 });
+LogEventSchema.index({ timestamp_minute: -1 });
 LogEventSchema.index({ tenant_id: 1, ingest_id: 1 }, { unique: false });
+LogEventSchema.index({ timestamp: 1 }, { expireAfterSeconds: config.logTtlSeconds });
 
 export const LogEvent = mongoose.model('LogEvent', LogEventSchema);
