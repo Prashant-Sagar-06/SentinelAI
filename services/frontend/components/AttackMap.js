@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ComposableMap, Geographies, Geography, Marker } from 'react-simple-maps';
-
-const DEFAULT_API_BASE = 'http://localhost:4000';
 const DEFAULT_GEO_URL = 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json';
 
 function clamp(n, min, max) {
@@ -12,17 +10,27 @@ function lerp(a, b, t) {
   return a + (b - a) * t;
 }
 
+function hexToRgb(hex) {
+  const h = String(hex || '').replace('#', '').trim();
+  if (h.length !== 6) return null;
+  const n = Number.parseInt(h, 16);
+  if (!Number.isFinite(n)) return null;
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+
 function colorForCount(count, maxCount) {
   const c = Number(count);
   const m = Number(maxCount);
   if (!Number.isFinite(c) || c <= 0) return 'rgba(148, 163, 184, 0.65)';
-  if (!Number.isFinite(m) || m <= 0) return 'rgba(249, 115, 22, 0.75)';
+  if (!Number.isFinite(m) || m <= 0) return 'rgba(245, 158, 11, 0.75)';
 
   const t = clamp(c / m, 0, 1);
-  // Tailwind-ish: orange-500 -> red-500
-  const r = Math.round(lerp(249, 239, t));
-  const g = Math.round(lerp(115, 68, t));
-  const b = Math.round(lerp(22, 68, t));
+  // warning -> critical
+  const warning = hexToRgb('#F59E0B');
+  const critical = hexToRgb('#EF4444');
+  const r = Math.round(lerp(warning?.r ?? 245, critical?.r ?? 239, t));
+  const g = Math.round(lerp(warning?.g ?? 158, critical?.g ?? 68, t));
+  const b = Math.round(lerp(warning?.b ?? 11, critical?.b ?? 68, t));
   const a = lerp(0.7, 0.9, t);
   return `rgba(${r}, ${g}, ${b}, ${a})`;
 }
@@ -39,7 +47,13 @@ function radiusForCount(count, maxCount) {
 }
 
 export default function AttackMap({ token, apiBaseUrl, geographyUrl }) {
-  const apiBase = apiBaseUrl || process.env.NEXT_PUBLIC_API_BASE_URL || DEFAULT_API_BASE;
+  const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL;
+
+  if (!apiBaseUrl && !API_BASE) {
+    throw new Error('NEXT_PUBLIC_API_BASE_URL is not defined');
+  }
+
+  const apiBase = apiBaseUrl || API_BASE;
   const geoUrl = geographyUrl || DEFAULT_GEO_URL;
 
   const abortRef = useRef(null);
@@ -81,7 +95,8 @@ export default function AttackMap({ token, apiBaseUrl, geographyUrl }) {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || 'Failed to load attack map');
 
-      const items = Array.isArray(json.attacks) ? json.attacks : [];
+      const data = json && typeof json === 'object' && 'data' in json ? json.data : json;
+      const items = Array.isArray(data.attacks) ? data.attacks : [];
       setAttacks(items.slice(0, 50));
     } catch (e) {
       if (e?.name === 'AbortError') return;
@@ -107,7 +122,7 @@ export default function AttackMap({ token, apiBaseUrl, geographyUrl }) {
   }, [token, apiBase]);
 
   return (
-    <div className="relative h-64 overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
+    <div className="relative h-64 overflow-hidden rounded-2xl border border-soc-border bg-black/10">
       <ComposableMap
         projection="geoMercator"
         projectionConfig={{ scale: 130 }}
@@ -119,8 +134,8 @@ export default function AttackMap({ token, apiBaseUrl, geographyUrl }) {
               <Geography
                 key={geo.rsmKey}
                 geography={geo}
-                fill="#0f172a"
-                stroke="#334155"
+                fill="#0B0F14"
+                stroke="#1F2937"
                 strokeWidth={0.5}
                 style={{
                   default: { outline: 'none' },
@@ -156,7 +171,7 @@ export default function AttackMap({ token, apiBaseUrl, geographyUrl }) {
               }}
             >
               <circle className="attack-pulse" r={r} fill={fill} stroke="none" />
-              <circle r={r} fill={fill} stroke="#7f1d1d" strokeWidth={1} />
+              <circle r={r} fill={fill} stroke="#1F2937" strokeWidth={1} />
             </Marker>
           );
         })}
@@ -182,29 +197,29 @@ export default function AttackMap({ token, apiBaseUrl, geographyUrl }) {
       `}</style>
 
       {loading ? (
-        <div className="absolute inset-0 flex items-center justify-center bg-slate-900/40 text-xs text-slate-300">
+        <div className="absolute inset-0 flex items-center justify-center bg-black/30 text-xs text-soc-muted">
           Loading map…
         </div>
       ) : null}
 
       {error ? (
-        <div className="absolute left-3 top-3 rounded-lg border border-red-900/40 bg-red-950/40 px-2.5 py-1 text-xs text-red-200">
+        <div className="absolute left-3 top-3 rounded-xl border border-soc-critical/35 bg-soc-critical/10 px-2.5 py-1 text-xs text-soc-text">
           {error}
         </div>
       ) : null}
 
       {tooltip.visible && tooltip.attack ? (
         <div
-          className="pointer-events-none fixed z-50 rounded-xl border border-slate-700 bg-slate-950/95 px-3 py-2 text-xs text-slate-100 shadow-lg"
+          className="pointer-events-none fixed z-50 rounded-xl border border-soc-border bg-soc-bg/90 px-3 py-2 text-xs text-soc-text shadow-card"
           style={{ left: tooltip.x + 12, top: tooltip.y + 12, maxWidth: 260 }}
         >
-          <div className="font-semibold text-slate-100">{tooltip.attack.ip}</div>
-          <div className="mt-0.5 text-slate-300">
+          <div className="font-semibold text-soc-text">{tooltip.attack.ip}</div>
+          <div className="mt-0.5 text-soc-muted">
             {tooltip.attack.city}, {tooltip.attack.country}
           </div>
           <div className="mt-1 flex items-center justify-between gap-6">
-            <span className="text-slate-300">Attacks</span>
-            <span className="font-semibold text-slate-100">{tooltip.attack.count}</span>
+            <span className="text-soc-muted">Attacks</span>
+            <span className="font-semibold text-soc-text">{tooltip.attack.count}</span>
           </div>
         </div>
       ) : null}
