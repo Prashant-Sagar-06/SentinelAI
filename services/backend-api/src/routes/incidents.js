@@ -1,9 +1,11 @@
- import express from 'express';
+import express from 'express';
 import { z } from 'zod';
 
 import { Incident } from '../models/Incident.js';
 import { requireRole } from '../middleware/rbac.js';
 import { validateBody } from '../middleware/validate.js';
+import { ok } from '../lib/apiResponse.js';
+import { badRequest, notFound } from '../lib/httpError.js';
 
 export const incidentsRouter = express.Router();
 
@@ -22,6 +24,7 @@ const ListQuerySchema = z.object({
 
 incidentsRouter.get('/', async (req, res, next) => {
   try {
+    const userId = String(req.user?.sub ?? '');
     const parsed = ListQuerySchema.safeParse({
       page: first(req.query.page),
       limit: first(req.query.limit),
@@ -30,12 +33,12 @@ incidentsRouter.get('/', async (req, res, next) => {
     });
 
     if (!parsed.success) {
-      return res.status(400).json({ error: 'invalid_query', details: parsed.error.flatten() });
+      return next(badRequest('invalid_query', 'Invalid query parameters', parsed.error.flatten()));
     }
 
     const q = parsed.data;
 
-    const filter = {};
+    const filter = { user_id: userId };
     if (q.status) filter.status = q.status;
     if (q.severity) filter.severity = q.severity;
 
@@ -50,7 +53,7 @@ incidentsRouter.get('/', async (req, res, next) => {
         .lean(),
     ]);
 
-    res.json({ incidents, page: q.page, total });
+    return ok(res, { incidents, page: q.page, total });
   } catch (e) {
     next(e);
   }
@@ -58,13 +61,15 @@ incidentsRouter.get('/', async (req, res, next) => {
 
 incidentsRouter.get('/:id', async (req, res, next) => {
   try {
+    const userId = String(req.user?.sub ?? '');
     const idParsed = ObjectIdSchema.safeParse(req.params.id);
-    if (!idParsed.success) return res.status(400).json({ error: 'invalid_id' });
+    if (!idParsed.success) return next(badRequest('invalid_id', 'Invalid id'));
     const id = idParsed.data;
 
-    const incident = await Incident.findById(id).populate({
+    const incident = await Incident.findOne({ _id: id, user_id: userId }).populate({
       path: 'alerts',
       options: { sort: { createdAt: -1 } },
+      match: { user_id: userId },
       select: {
         title: 1,
         severity: 1,
@@ -83,8 +88,8 @@ incidentsRouter.get('/:id', async (req, res, next) => {
       },
     });
 
-    if (!incident) return res.status(404).json({ error: 'not_found' });
-    res.json({ incident });
+    if (!incident) return next(notFound('not_found', 'Not found'));
+    return ok(res, { incident });
   } catch (e) {
     next(e);
   }
@@ -101,8 +106,9 @@ const PatchSchema = z
 
 incidentsRouter.patch('/:id', requireRole(['admin', 'analyst']), validateBody(PatchSchema), async (req, res, next) => {
   try {
+    const userId = String(req.user?.sub ?? '');
     const idParsed = ObjectIdSchema.safeParse(req.params.id);
-    if (!idParsed.success) return res.status(400).json({ error: 'invalid_id' });
+    if (!idParsed.success) return next(badRequest('invalid_id', 'Invalid id'));
     const id = idParsed.data;
     const patch = req.body;
 
@@ -112,10 +118,10 @@ incidentsRouter.patch('/:id', requireRole(['admin', 'analyst']), validateBody(Pa
     if (patch.assigned_to !== undefined) $set.assigned_to = patch.assigned_to;
     if (patch.notes !== undefined) $set.notes = patch.notes;
 
-    const updated = await Incident.findByIdAndUpdate(id, { $set }, { new: true, runValidators: true });
-    if (!updated) return res.status(404).json({ error: 'not_found' });
+    const updated = await Incident.findOneAndUpdate({ _id: id, user_id: userId }, { $set }, { new: true, runValidators: true });
+    if (!updated) return next(notFound('not_found', 'Not found'));
 
-    res.json({ incident: updated });
+    return ok(res, { incident: updated });
   } catch (e) {
     next(e);
   }

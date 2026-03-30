@@ -1,6 +1,7 @@
 import express from 'express';
 
 import { LogEvent } from '../models/LogEvent.js';
+import { ok } from '../lib/apiResponse.js';
 
 export const metricsRouter = express.Router();
 
@@ -11,6 +12,7 @@ function toNumberOrZero(v) {
 
 metricsRouter.get('/summary', async (req, res, next) => {
   try {
+    const userId = String(req.user?.sub ?? '');
     const now = Date.now();
 
     const currentWindowMs = 60_000;
@@ -22,12 +24,14 @@ metricsRouter.get('/summary', async (req, res, next) => {
     const [agg] = await LogEvent.aggregate([
       {
         $match: {
+          user_id: userId,
           timestamp: { $gte: baselineStart },
         },
       },
       {
         $project: {
           timestamp: 1,
+          ip: { $ifNull: ['$network.ip', null] },
           status: { $toLower: { $ifNull: ['$status', ''] } },
           latency: {
             $convert: {
@@ -53,10 +57,33 @@ metricsRouter.get('/summary', async (req, res, next) => {
                 total: { $sum: 1 },
                 errors: {
                   $sum: {
-                    $cond: [{ $eq: ['$status', 'error'] }, 1, 0],
+                    $cond: [{ $in: ['$status', ['error', 'failed']] }, 1, 0],
                   },
                 },
                 avg_latency_ms: { $avg: '$latency' },
+              },
+            },
+          ],
+          top_ips: [
+            {
+              $match: {
+                timestamp: { $gte: currentStart },
+                ip: { $ne: null },
+              },
+            },
+            {
+              $group: {
+                _id: '$ip',
+                count: { $sum: 1 },
+              },
+            },
+            { $sort: { count: -1 } },
+            { $limit: 5 },
+            {
+              $project: {
+                _id: 0,
+                ip: '$_id',
+                count: 1,
               },
             },
           ],
@@ -72,7 +99,7 @@ metricsRouter.get('/summary', async (req, res, next) => {
                 total: { $sum: 1 },
                 errors: {
                   $sum: {
-                    $cond: [{ $eq: ['$status', 'error'] }, 1, 0],
+                    $cond: [{ $in: ['$status', ['error', 'failed']] }, 1, 0],
                   },
                 },
                 avg_latency_ms: { $avg: '$latency' },
@@ -87,20 +114,22 @@ metricsRouter.get('/summary', async (req, res, next) => {
     const base = (agg?.baseline && agg.baseline[0]) || { total: 0, errors: 0, avg_latency_ms: 0 };
 
     const requests_per_minute = toNumberOrZero(cur.total);
-    const errorRate = requests_per_minute > 0 ? (toNumberOrZero(cur.errors) / requests_per_minute) * 100 : 0;
+    // Canonical: 0..1 (not percent)
+    const errorRate = requests_per_minute > 0 ? toNumberOrZero(cur.errors) / requests_per_minute : 0;
     const avg_latency_ms = toNumberOrZero(cur.avg_latency_ms);
 
     const baselineAvgLatency = toNumberOrZero(base.avg_latency_ms);
 
-    const errorAnomaly = errorRate > 20;
+    const errorAnomaly = errorRate > 0.2;
     const latencyAnomaly =
       baselineAvgLatency > 0 && avg_latency_ms > 0 && avg_latency_ms > baselineAvgLatency * 2;
 
-    res.json({
+    return ok(res, {
       requests_per_minute,
-      error_rate: Number(errorRate.toFixed(2)),
+      error_rate: Number(errorRate.toFixed(4)),
       avg_latency_ms: Number(avg_latency_ms.toFixed(2)),
       anomaly: Boolean(errorAnomaly || latencyAnomaly),
+      top_ips: Array.isArray(agg?.top_ips) ? agg.top_ips : [],
     });
   } catch (e) {
     next(e);

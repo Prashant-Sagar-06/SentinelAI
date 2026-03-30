@@ -2,6 +2,7 @@ import express from 'express';
 import net from 'node:net';
 
 import { Alert } from '../models/Alert.js';
+import { ok } from '../lib/apiResponse.js';
 
 export const attackMapRouter = express.Router();
 
@@ -129,9 +130,11 @@ async function mapWithConcurrency(items, concurrency, fn) {
 
 attackMapRouter.get('/', async (req, res, next) => {
   try {
+    const userId = String(req.user?.sub ?? '');
     const rows = await Alert.aggregate([
       {
         $match: {
+          user_id: userId,
           source_ip: { $type: 'string', $ne: '' },
         },
       },
@@ -165,7 +168,7 @@ attackMapRouter.get('/', async (req, res, next) => {
       };
     });
 
-    res.json({ attacks: attacks.filter(Boolean) });
+    return ok(res, { attacks: attacks.filter(Boolean) });
   } catch (e) {
     next(e);
   }

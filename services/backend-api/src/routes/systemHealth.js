@@ -2,6 +2,7 @@ import express from 'express';
 import mongoose from 'mongoose';
 
 import { config } from '../config.js';
+import { ok as okResponse } from '../lib/apiResponse.js';
 
 export function createSystemHealthRouter(analysisQueue) {
   const router = express.Router();
@@ -12,15 +13,16 @@ export function createSystemHealthRouter(analysisQueue) {
 
   async function withTimeout(ms, fn) {
     let timeoutId;
+    const started = Date.now();
 
     const timeoutPromise = new Promise((resolve) => {
-      timeoutId = setTimeout(() => resolve({ ok: false, timedOut: true }), ms);
+      timeoutId = setTimeout(() => resolve({ ok: false, timedOut: true, ms: Date.now() - started }), ms);
     });
 
     const opPromise = (async () => {
       await fn();
-      return { ok: true, timedOut: false };
-    })().catch(() => ({ ok: false, timedOut: false }));
+      return { ok: true, timedOut: false, ms: Date.now() - started };
+    })().catch((err) => ({ ok: false, timedOut: false, ms: Date.now() - started, error: err?.message }));
 
     try {
       return await Promise.race([opPromise, timeoutPromise]);
@@ -30,7 +32,7 @@ export function createSystemHealthRouter(analysisQueue) {
   }
 
   router.get('/', async (req, res) => {
-    const backend = { status: 'ok' };
+    const backend = { status: 'ok', uptime_s: Math.round(process.uptime()) };
 
     const mongoReadyState = mongoose.connection.readyState;
     const mongo = { status: status(mongoReadyState === 1), readyState: mongoReadyState };
@@ -73,16 +75,28 @@ export function createSystemHealthRouter(analysisQueue) {
       aiEnginePromise,
     ]);
 
-    const redis = { status: status(redisResult.ok), timedOut: redisResult.timedOut };
-    const worker = { status: status(workerResult.ok), timedOut: workerResult.timedOut };
+    const redis = {
+      status: status(redisResult.ok),
+      timedOut: redisResult.timedOut,
+      latency_ms: redisResult.ms,
+      ...(redisResult.error ? { error: redisResult.error } : {}),
+    };
+    const worker = {
+      status: status(workerResult.ok),
+      timedOut: workerResult.timedOut,
+      latency_ms: workerResult.ms,
+      ...(workerResult.error ? { error: workerResult.error } : {}),
+    };
     const ai_engine = {
       status: status(aiEngineResult.ok),
       timedOut: aiEngineResult.timedOut,
+      latency_ms: aiEngineResult.ms,
+      ...(aiEngineResult.error ? { error: aiEngineResult.error } : {}),
       urlConfigured: Boolean(aiEngineBase),
     };
 
     const ok = [backend, mongo, redis, worker, ai_engine].every((c) => c.status === 'ok');
-    res.status(ok ? 200 : 503).json({ ok, backend, mongo, redis, worker, ai_engine });
+    return okResponse(res, { ok, ts: new Date().toISOString(), backend, mongo, redis, worker, ai_engine }, { status: ok ? 200 : 503 });
   });
 
   return router;

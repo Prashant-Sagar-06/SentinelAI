@@ -4,6 +4,8 @@ import { z } from 'zod';
 import { User } from '../models/User.js';
 import { signJwt, requireAuth } from '../middleware/auth.js';
 import { validateBody } from '../middleware/validate.js';
+import { ok } from '../lib/apiResponse.js';
+import { HttpError, unauthorized } from '../lib/httpError.js';
 
 export const authRouter = express.Router();
 
@@ -22,7 +24,7 @@ authRouter.post('/register', validateBody(RegisterSchema), async (req, res, next
 
     const existing = await User.findOne({ email });
     if (existing) {
-      return res.status(409).json({ error: 'email_in_use' });
+      return next(new HttpError(409, 'email_in_use', 'Email already registered'));
     }
 
     const passwordHash = await bcrypt.hash(password, 12);
@@ -35,7 +37,7 @@ authRouter.post('/register', validateBody(RegisterSchema), async (req, res, next
 
     const token = signJwt(user);
 
-    res.json({
+    return ok(res, {
       token,
       user: {
         id: String(user._id),
@@ -67,18 +69,18 @@ authRouter.post('/login', validateBody(LoginSchema), async (req, res, next) => {
     const storedHash = user?.passwordHash || user?.password;
 
     if (!user || !storedHash) {
-      return res.status(401).json({ error: 'invalid_credentials' });
+      return next(unauthorized('invalid_credentials', 'Invalid credentials'));
     }
 
-    const ok = await bcrypt.compare(password, storedHash);
+    const isValid = await bcrypt.compare(password, storedHash);
 
-    if (!ok) {
-      return res.status(401).json({ error: 'invalid_credentials' });
+    if (!isValid) {
+      return next(unauthorized('invalid_credentials', 'Invalid credentials'));
     }
 
     const token = signJwt(user);
 
-    res.json({
+    return ok(res, {
       token,
       user: {
         id: String(user._id),
@@ -95,7 +97,7 @@ authRouter.post('/login', validateBody(LoginSchema), async (req, res, next) => {
    ME
 ========================= */
 authRouter.get('/me', requireAuth, async (req, res) => {
-  res.json({
+  return ok(res, {
     user: {
       id: req.user.sub,
       email: req.user.email,
