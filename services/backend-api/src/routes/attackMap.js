@@ -71,7 +71,7 @@ async function fetchGeo(ip) {
   const timeout = setTimeout(() => controller.abort(), 5000);
 
   try {
-    const res = await fetch(`http://ip-api.com/json/${encodeURIComponent(ip)}`, {
+    const res = await fetch(`https://ip-api.com/json/${encodeURIComponent(ip)}`, {
       signal: controller.signal,
       headers: {
         accept: 'application/json',

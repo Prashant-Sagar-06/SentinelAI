@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 
 const IncidentSchema = new mongoose.Schema(
   {
+    user_id: { type: String, default: null, index: true },
     title: { type: String, required: true },
     severity: { type: String, required: true, enum: ['low', 'medium', 'high', 'critical'], index: true },
     status: {
@@ -22,6 +23,7 @@ const IncidentSchema = new mongoose.Schema(
   { versionKey: false }
 );
 
+IncidentSchema.index({ user_id: 1, status: 1, severity: 1 });
 IncidentSchema.index({ status: 1, severity: 1 });
 IncidentSchema.index({ actors: 1 });
 IncidentSchema.index({ source_ips: 1 });

@@ -1,28 +1,52 @@
-import { Worker } from 'bullmq';
+import { Queue, Worker } from 'bullmq';
+import Redis from 'ioredis';
+import mongoose from 'mongoose';
 
 import { requireEnv, config } from './config.js';
 import { connectMongo } from './db.js';
 import { LogEvent } from './models/LogEvent.js';
+import { MetricsMinute } from './models/MetricsMinute.js';
+import { Anomaly } from './models/Anomaly.js';
 import { AnomalyResult } from './models/AnomalyResult.js';
 import { Alert } from './models/Alert.js';
 import { Incident } from './models/Incident.js';
-import { redisConnectionFromUrl } from './redis.js';
+import { Response } from './models/Response.js';
 import { lookupThreatIntel } from './lib/threatIntel.js';
 import { startAlertEngine } from './lib/alertService.js';
-import { startAnomalyEngine } from './lib/anomalyService.js';
+import { startAnomalyEngine } from './services/anomalyService.js';
+import { startMetricsMinuteJob } from './services/metricsService.js';
+import { logger } from './lib/logger.js';
 
 requireEnv();
 await connectMongo();
 
-function logInfo(message, meta) {
-  // eslint-disable-next-line no-console
-  console.log(`[worker] ${message}`, meta ?? '');
+await Promise.allSettled([
+  LogEvent.syncIndexes(),
+  MetricsMinute.syncIndexes(),
+  Anomaly.syncIndexes(),
+  Alert.syncIndexes(),
+  Incident.syncIndexes(),
+  Response.syncIndexes(),
+  AnomalyResult.syncIndexes(),
+]);
+
+const log = logger.child({ service: 'worker' });
+
+const ONE_MINUTE_MS = 60_000;
+
+function floorToUtcMinute(date) {
+  const d = date instanceof Date ? date : new Date(date);
+  const ms = d.getTime();
+  if (Number.isNaN(ms)) return null;
+  return new Date(Math.floor(ms / ONE_MINUTE_MS) * ONE_MINUTE_MS);
 }
 
-function logError(message, meta) {
-  // eslint-disable-next-line no-console
-  console.error(`[worker] ${message}`, meta ?? '');
-}
+// BullMQ should use Redis URL directly (single source of truth).
+const bullConnection = new Redis(config.redisUrl, {
+  maxRetriesPerRequest: null,
+  enableReadyCheck: true,
+  lazyConnect: false,
+});
 
 async function broadcastAlertCreated(alertDoc) {
   if (!alertDoc) return;
@@ -42,10 +66,10 @@ async function broadcastAlertCreated(alertDoc) {
 
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      logError('broadcast failed', { status: res.status, body: text.slice(0, 500) });
+      log.warn({ status: res.status, body: text.slice(0, 500) }, 'broadcast failed');
     }
   } catch (e) {
-    logError('broadcast error', { message: e?.message });
+    log.warn({ err: e }, 'broadcast error');
   }
 }
 
@@ -89,6 +113,8 @@ function maxSeverity(a, b) {
 async function correlateIncidentFromAlert(alertDoc) {
   if (!alertDoc) return;
 
+  const userId = alertDoc.user_id ? String(alertDoc.user_id) : null;
+
   const actor = alertDoc.actor || 'unknown_actor';
   const sourceIp = alertDoc.source_ip || 'unknown_ip';
 
@@ -97,6 +123,7 @@ async function correlateIncidentFromAlert(alertDoc) {
   const lastSeen = alertDoc.last_seen ?? now;
 
   const filter = {
+    ...(userId ? { user_id: userId } : {}),
     status: { $ne: 'resolved' },
     // NOTE: Equality on array fields matches when the array contains the value.
     // It also ensures the upsert has concrete values for these fields.
@@ -113,6 +140,7 @@ async function correlateIncidentFromAlert(alertDoc) {
       updatedAt: now,
     },
     $setOnInsert: {
+      ...(userId ? { user_id: userId } : {}),
       title: alertDoc.title,
       severity: alertDoc.severity,
       status: 'open',
@@ -131,26 +159,51 @@ async function correlateIncidentFromAlert(alertDoc) {
 }
 
 async function callAiEngine(normalizedEvent) {
-  const res = await fetch(`${config.aiEngineUrl}/analyze`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ event: normalizedEvent }),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`AI engine error ${res.status}: ${text}`);
+  const base = String(config.aiEngineUrl || '').replace(/\/$/, '');
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), Math.max(250, Number(config.aiEngineTimeoutMs ?? 4500)));
+  try {
+    const res = await fetch(`${base}/analyze`, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify({ event: normalizedEvent }),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`AI engine error ${res.status}: ${text.slice(0, 500)}`);
+    }
+    return res.json();
+  } finally {
+    clearTimeout(t);
   }
-  return res.json();
 }
+
+function fallbackAnalysis(err) {
+  const msg = err?.name === 'AbortError' ? 'AI engine timeout' : (err?.message || 'AI engine unavailable');
+  return {
+    model_version: 'fallback-v1',
+    anomaly_score: 0.0,
+    risk_score: 0.0,
+    risk_level: 'low',
+    threat_type: 'unknown',
+    explanations: [msg],
+    features: { ai_engine_error: msg },
+  };
+}
+
+const analysisQueue = new Queue('analysis-jobs', {
+  connection: bullConnection,
+});
 
 const worker = new Worker(
   'analysis-jobs',
   async (job) => {
     const { event_id } = job.data;
-    logInfo('job received', { job_id: job.id, event_id });
+    log.info({ job_id: job.id, event_id, name: job.name }, 'job received');
     const eventDoc = await LogEvent.findById(event_id);
     if (!eventDoc) {
-      logInfo('event not found; skipping', { job_id: job.id, event_id });
+      log.info({ job_id: job.id, event_id }, 'event not found; skipping');
       return;
     }
 
@@ -170,40 +223,62 @@ const worker = new Worker(
     };
 
     try {
-      const analyzed = await callAiEngine(normalizedEvent);
+      let analyzed;
+      try {
+        analyzed = await callAiEngine(normalizedEvent);
+      } catch (e) {
+        analyzed = fallbackAnalysis(e);
+        log.warn({ job_id: job.id, event_id, err: e?.message }, 'ai engine failed; using fallback analysis');
+      }
 
-      logInfo('ai analysis completed', {
+      log.info({
         job_id: job.id,
         event_id,
         threat_type: analyzed.threat_type,
         risk_score: analyzed.risk_score,
         risk_level: analyzed.risk_level,
-      });
+      }, 'ai analysis completed');
 
-      await AnomalyResult.create({
+      const anomalyResultKey = {
+        user_id: eventDoc.user_id ? String(eventDoc.user_id) : null,
         event_id: eventDoc._id,
-        model_version: analyzed.model_version ?? 'unknown',
-        anomaly_score: analyzed.anomaly_score,
-        risk_score: analyzed.risk_score,
-        risk_level: analyzed.risk_level,
-        threat_type: analyzed.threat_type,
-        explanations: analyzed.explanations ?? [],
-        features: analyzed.features ?? undefined,
-      });
+      };
+
+      await AnomalyResult.updateOne(
+        anomalyResultKey,
+        {
+          $set: {
+            timestamp_minute: eventDoc.timestamp ? floorToUtcMinute(eventDoc.timestamp) : null,
+            model_version: analyzed.model_version ?? 'unknown',
+            anomaly_score: analyzed.anomaly_score,
+            risk_score: analyzed.risk_score,
+            risk_level: analyzed.risk_level,
+            threat_type: analyzed.threat_type,
+            explanations: analyzed.explanations ?? [],
+            features: analyzed.features ?? undefined,
+          },
+          $setOnInsert: {
+            createdAt: new Date(),
+          },
+        },
+        { upsert: true }
+      );
 
       if (Number(analyzed.risk_score) < config.alertThresholdRisk) {
-        await LogEvent.findByIdAndUpdate(eventDoc._id, { analysis_status: 'done' });
-        logInfo('risk below threshold; no alert', {
+        const status = analyzed?.model_version === 'fallback-v1' ? 'error' : 'done';
+        await LogEvent.findByIdAndUpdate(eventDoc._id, { analysis_status: status });
+        log.info({
           job_id: job.id,
           event_id,
           risk_score: analyzed.risk_score,
           threshold: config.alertThresholdRisk,
-        });
+        }, 'risk below threshold; no alert');
         return;
       }
 
       const sourceIp = eventDoc.network?.ip;
       const actor = eventDoc.actor?.user ?? eventDoc.actor?.service;
+      const userId = eventDoc.user_id ? String(eventDoc.user_id) : null;
 
       const threatIntel = sourceIp ? await lookupThreatIntel(sourceIp) : null;
       const groupKey = deriveGroupKey({
@@ -236,6 +311,7 @@ const worker = new Worker(
           ...(threatIntel ? { threat_intel: threatIntel } : {}),
         },
         $setOnInsert: {
+          ...(userId ? { user_id: userId } : {}),
           event_id: eventDoc._id,
           title,
           severity: analyzed.risk_level,
@@ -255,7 +331,7 @@ const worker = new Worker(
       let alert;
       try {
         alert = await Alert.findOneAndUpdate(
-          { group_key: groupKey, status: 'open', window_start: windowStart },
+          { ...(userId ? { user_id: userId } : {}), group_key: groupKey, status: 'open', window_start: windowStart },
           update,
           { new: true, upsert: true }
         );
@@ -263,7 +339,7 @@ const worker = new Worker(
         // If two workers attempt insert concurrently, unique index may throw; retry as update.
         if (e && e.code === 11000) {
           alert = await Alert.findOneAndUpdate(
-            { group_key: groupKey, status: 'open', window_start: windowStart },
+            { ...(userId ? { user_id: userId } : {}), group_key: groupKey, status: 'open', window_start: windowStart },
             {
               $inc: { event_count: 1, 'counts.occurrences': 1 },
               $set: { last_seen: now, 'counts.last_seen_at': now, updatedAt: now, ...(threatIntel ? { threat_intel: threatIntel } : {}) },
@@ -272,17 +348,14 @@ const worker = new Worker(
           );
         } else if (e && String(e.message || '').includes('ConflictingUpdateOperators')) {
           // Defensive fallback: do a minimal update that avoids any nested structure conflicts.
-          logError('mongo update conflict; retrying with minimal update', {
-            job_id: job.id,
-            event_id,
-            message: e.message,
-          });
+          log.warn({ job_id: job.id, event_id, err: e }, 'mongo update conflict; retrying with minimal update');
           alert = await Alert.findOneAndUpdate(
-            { group_key: groupKey, status: 'open', window_start: windowStart },
+            { ...(userId ? { user_id: userId } : {}), group_key: groupKey, status: 'open', window_start: windowStart },
             {
               $inc: { event_count: 1, 'counts.occurrences': 1 },
               $set: { last_seen: now, updatedAt: now, ...(threatIntel ? { threat_intel: threatIntel } : {}) },
               $setOnInsert: {
+                ...(userId ? { user_id: userId } : {}),
                 event_id: eventDoc._id,
                 title,
                 severity: analyzed.risk_level,
@@ -306,7 +379,7 @@ const worker = new Worker(
 
       // Escalate severity if needed (keep monotonic).
       if (alert) {
-        logInfo('alert upserted', {
+        log.info({
           job_id: job.id,
           event_id,
           alert_id: String(alert._id),
@@ -315,7 +388,7 @@ const worker = new Worker(
           event_count: alert.event_count,
           severity: alert.severity,
           threat_type: alert.threat_type,
-        });
+        }, 'alert upserted');
 
         await broadcastAlertCreated(alert);
 
@@ -327,52 +400,94 @@ const worker = new Worker(
 
         try {
           await correlateIncidentFromAlert(alert);
-          logInfo('incident correlated', {
+          log.info({
             job_id: job.id,
             event_id,
             alert_id: String(alert._id),
             actor: alert.actor,
             source_ip: alert.source_ip,
-          });
+          }, 'incident correlated');
         } catch (e) {
           // Incident correlation should never fail the job.
-          logError('incident correlation failed', {
-            job_id: job.id,
-            event_id,
-            alert_id: String(alert._id),
-            message: e?.message,
-          });
+          log.warn({ job_id: job.id, event_id, alert_id: String(alert._id), err: e }, 'incident correlation failed');
         }
 
         await LogEvent.findByIdAndUpdate(eventDoc._id, { analysis_status: 'done' });
       } else {
-        logError('alert upsert returned null', { job_id: job.id, event_id });
+        log.error({ job_id: job.id, event_id }, 'alert upsert returned null');
         await LogEvent.findByIdAndUpdate(eventDoc._id, { analysis_status: 'error' });
       }
     } catch (e) {
       await LogEvent.findByIdAndUpdate(eventDoc._id, { analysis_status: 'error' });
-      logError('job failed', { job_id: job.id, event_id, message: e?.message, stack: e?.stack });
+      log.error({ job_id: job.id, event_id, err: e }, 'job failed');
       throw e;
     }
   },
   {
-    connection: {
-      ...redisConnectionFromUrl(config.redisUrl),
-    },
+    connection: bullConnection,
     concurrency: 10,
   }
 );
 
-worker.on('failed', (job, err) => {
-  // eslint-disable-next-line no-console
-  console.error('job failed', job?.id, err);
+worker.on('completed', (job) => {
+  log.info({ job_id: job?.id, name: job?.name }, 'job completed');
 });
 
-// eslint-disable-next-line no-console
-console.log('worker started');
+worker.on('failed', (job, err) => {
+  log.error({ job_id: job?.id, name: job?.name, err }, 'job failed (event)');
+});
+
+worker.on('error', (err) => {
+  log.error({ err }, 'worker error');
+});
+
+worker.on('stalled', (jobId) => {
+  log.warn({ job_id: jobId }, 'job stalled');
+});
+
+log.info({ concurrency: 10 }, 'worker started');
+
+async function heartbeat() {
+  try {
+    const mongoReadyState = mongoose.connection.readyState;
+    const client = await worker.client;
+    const pong = await client.ping();
+    const counts = await analysisQueue.getJobCounts('waiting', 'active', 'failed', 'delayed');
+
+    log.info(
+      {
+        mongoReadyState,
+        redis: pong === 'PONG' ? 'ok' : 'down',
+        queue: counts,
+        mem: process.memoryUsage(),
+      },
+      'worker_heartbeat'
+    );
+  } catch (e) {
+    log.warn({ err: e }, 'worker_heartbeat_failed');
+  }
+}
+
+const heartbeatTimer = setInterval(() => {
+  void heartbeat();
+}, config.heartbeatIntervalMs);
+heartbeatTimer.unref?.();
+
+async function shutdown(signal) {
+  log.info({ signal }, 'shutdown');
+  clearInterval(heartbeatTimer);
+  await Promise.allSettled([worker.close(), analysisQueue.close(), bullConnection.quit()]);
+  process.exit(0);
+}
+
+process.on('SIGTERM', () => void shutdown('SIGTERM'));
+process.on('SIGINT', () => void shutdown('SIGINT'));
 
 // Rule-based intelligent alerts (runs on a timer, independent of job processing)
 startAlertEngine({ tickMs: 10_000 });
 
-// AI-based anomaly detection (runs on a timer, independent of job processing)
+// Log metrics aggregation (runs every 60s; writes to metrics_minute)
+startMetricsMinuteJob({ tickMs: 60_000 });
+
+// AI-based anomaly detection (runs every 10s; reads last 15 metrics_minute docs)
 startAnomalyEngine({ tickMs: 10_000 });

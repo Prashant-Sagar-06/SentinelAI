@@ -4,6 +4,15 @@ import { Alert } from '../models/Alert.js';
 const DEFAULT_WINDOW_MS = 60_000;
 const DEFAULT_TICK_MS = 10_000;
 
+async function getActiveUserIds({ now = new Date(), windowMs = DEFAULT_WINDOW_MS } = {}) {
+  const since = new Date(now.getTime() - Math.max(windowMs, 5 * 60_000));
+  const userIds = await LogEvent.distinct('user_id', {
+    user_id: { $exists: true, $type: 'string', $ne: '' },
+    timestamp: { $gte: since },
+  }).catch(() => []);
+  return (Array.isArray(userIds) ? userIds : []).map((x) => String(x)).filter(Boolean);
+}
+
 function logInfo(message, meta) {
   // eslint-disable-next-line no-console
   console.log(`[alert-engine] ${message}`, meta ?? '');
@@ -65,45 +74,66 @@ async function getRepresentativeEventId(match) {
   if (doc?._id) return doc._id;
 
   // Fallback: pick the most recent event overall.
-  const anyDoc = await LogEvent.findOne({}).sort({ timestamp: -1 }).select({ _id: 1 });
+  const uid = match?.user_id ? String(match.user_id) : null;
+  const anyDoc = await LogEvent.findOne(uid ? { user_id: uid } : {}).sort({ timestamp: -1 }).select({ _id: 1 });
   return anyDoc?._id ?? null;
 }
 
-export async function getRequestsLastMinute({ now = new Date(), windowMs = DEFAULT_WINDOW_MS } = {}) {
+export async function getRequestsLastMinute({ userId, now = new Date(), windowMs = DEFAULT_WINDOW_MS } = {}) {
+  const uid = String(userId ?? '').trim();
+  if (!uid) return 0;
   const start = new Date(now.getTime() - windowMs);
   const [result] = await LogEvent.aggregate([
-    { $match: { timestamp: { $gte: start, $lte: now } } },
+    { $match: { user_id: uid, timestamp: { $gte: start, $lte: now } } },
     { $count: 'count' },
   ]);
   return result?.count ?? 0;
 }
 
-export async function getAverageLatency({ now = new Date(), windowMs = DEFAULT_WINDOW_MS } = {}) {
+export async function getAverageLatency({ userId, now = new Date(), windowMs = DEFAULT_WINDOW_MS } = {}) {
+  const uid = String(userId ?? '').trim();
+  if (!uid) return null;
   const start = new Date(now.getTime() - windowMs);
   const [result] = await LogEvent.aggregate([
     {
       $match: {
+        user_id: uid,
         timestamp: { $gte: start, $lte: now },
-        'attributes.latency': { $type: 'number' },
       },
     },
-    { $group: { _id: null, avgLatencyMs: { $avg: '$attributes.latency' } } },
+    {
+      $project: {
+        latency: {
+          $convert: {
+            input: '$attributes.latency',
+            to: 'double',
+            onError: null,
+            onNull: null,
+          },
+        },
+      },
+    },
+    { $match: { latency: { $ne: null } } },
+    { $group: { _id: null, avgLatencyMs: { $avg: '$latency' } } },
   ]);
 
   return typeof result?.avgLatencyMs === 'number' ? result.avgLatencyMs : null;
 }
 
-export async function getErrorRate({ now = new Date(), windowMs = DEFAULT_WINDOW_MS } = {}) {
+export async function getErrorRate({ userId, now = new Date(), windowMs = DEFAULT_WINDOW_MS } = {}) {
+  const uid = String(userId ?? '').trim();
+  if (!uid) return { total: 0, failed: 0, errorRate: 0 };
   const start = new Date(now.getTime() - windowMs);
   const [result] = await LogEvent.aggregate([
-    { $match: { timestamp: { $gte: start, $lte: now } } },
+    { $match: { user_id: uid, timestamp: { $gte: start, $lte: now } } },
+    { $project: { statusLower: { $toLower: { $ifNull: ['$status', ''] } } } },
     {
       $group: {
         _id: null,
         total: { $sum: 1 },
         failed: {
           $sum: {
-            $cond: [{ $eq: ['$status', 'failed'] }, 1, 0],
+            $cond: [{ $in: ['$statusLower', ['failed', 'error']] }, 1, 0],
           },
         },
       },
@@ -127,11 +157,14 @@ export async function getErrorRate({ now = new Date(), windowMs = DEFAULT_WINDOW
   };
 }
 
-export async function getTopIPs({ now = new Date(), windowMs = DEFAULT_WINDOW_MS, limit = 10 } = {}) {
+export async function getTopIPs({ userId, now = new Date(), windowMs = DEFAULT_WINDOW_MS, limit = 10 } = {}) {
+  const uid = String(userId ?? '').trim();
+  if (!uid) return [];
   const start = new Date(now.getTime() - windowMs);
   const results = await LogEvent.aggregate([
     {
       $match: {
+        user_id: uid,
         timestamp: { $gte: start, $lte: now },
         'network.ip': { $exists: true, $ne: null },
       },
@@ -148,6 +181,10 @@ export async function getTopIPs({ now = new Date(), windowMs = DEFAULT_WINDOW_MS
 export async function createAlert(alertData) {
   const now = new Date();
   const windowStart = computeWindowStart(now, DEFAULT_WINDOW_MS);
+  const timestampMinute = computeWindowStart(now, 60_000);
+
+  const userId = String(alertData?.user_id ?? '').trim();
+  if (!userId) throw new Error('createAlert requires user_id');
 
   const type = String(alertData?.type ?? '').trim();
   if (!type) throw new Error('createAlert requires type');
@@ -158,7 +195,7 @@ export async function createAlert(alertData) {
   // Rolling-window dedupe: same alert type/group within the last 60s.
   // (Avoids edge cases where minute-bucket dedupe would allow alerts a few seconds apart.)
   const dedupeSince = new Date(now.getTime() - DEFAULT_WINDOW_MS);
-  const recentlyTriggered = await Alert.findOne({ group_key: groupKey, status: 'open', createdAt: { $gte: dedupeSince } })
+  const recentlyTriggered = await Alert.findOne({ user_id: userId, group_key: groupKey, status: 'open', createdAt: { $gte: dedupeSince } })
     .sort({ createdAt: -1 })
     .select({ _id: 1, createdAt: 1 });
 
@@ -177,6 +214,7 @@ export async function createAlert(alertData) {
   const title = String(alertData?.title ?? '').trim() || pickTitle(type);
 
   const matchForEvent = {
+    user_id: userId,
     timestamp: { $gte: new Date(now.getTime() - DEFAULT_WINDOW_MS), $lte: now },
     ...(metadata?.ip ? { 'network.ip': String(metadata.ip) } : {}),
   };
@@ -192,7 +230,10 @@ export async function createAlert(alertData) {
   // NOTE: existing Alert schema requires event_id, threat_type, group_key, reason, title.
   // We populate these to remain compatible with current dashboards/routes.
   const doc = {
+    user_id: userId,
     event_id: eventId,
+
+    timestamp_minute: timestampMinute,
 
     type,
     message: message || title,
@@ -236,92 +277,101 @@ export async function createAlert(alertData) {
 }
 
 export async function evaluateAlerts({ now = new Date() } = {}) {
-  const requestsLastMinute = await getRequestsLastMinute({ now });
-  const avgLatencyMs = await getAverageLatency({ now });
-  const error = await getErrorRate({ now });
-  const topIps = await getTopIPs({ now });
+  const userIds = await getActiveUserIds({ now });
+  if (!userIds.length) {
+    logInfo('tick complete', { tenants: 0, created: 0 });
+    return { createdAlerts: [], tenants: 0 };
+  }
 
   const createdAlerts = [];
+  for (const userId of userIds) {
+    // eslint-disable-next-line no-await-in-loop
+    const requestsLastMinute = await getRequestsLastMinute({ userId, now });
+    // eslint-disable-next-line no-await-in-loop
+    const avgLatencyMs = await getAverageLatency({ userId, now });
+    // eslint-disable-next-line no-await-in-loop
+    const error = await getErrorRate({ userId, now });
+    // eslint-disable-next-line no-await-in-loop
+    const topIps = await getTopIPs({ userId, now });
 
-  // A) HIGH_TRAFFIC
-  if (requestsLastMinute > 50) {
-    const severity = severityForRule('HIGH_TRAFFIC', { requestsLastMinute });
-    const message = `Requests in last 60s: ${requestsLastMinute} (> 50)`;
-    const created = await createAlert({
-      type: 'HIGH_TRAFFIC',
-      severity,
-      title: pickTitle('HIGH_TRAFFIC'),
-      message,
-      metadata: { requestsLastMinute, windowSeconds: 60 },
-    });
-    if (created) createdAlerts.push(created);
-  }
+    // A) HIGH_TRAFFIC
+    if (requestsLastMinute > 50) {
+      const severity = severityForRule('HIGH_TRAFFIC', { requestsLastMinute });
+      const message = `Requests in last 60s: ${requestsLastMinute} (> 50)`;
+      // eslint-disable-next-line no-await-in-loop
+      const created = await createAlert({
+        user_id: userId,
+        type: 'HIGH_TRAFFIC',
+        severity,
+        title: pickTitle('HIGH_TRAFFIC'),
+        message,
+        metadata: { requestsLastMinute, windowSeconds: 60 },
+      });
+      if (created) createdAlerts.push(created);
+    }
 
-  // B) HIGH_LATENCY
-  if (typeof avgLatencyMs === 'number' && avgLatencyMs > 300) {
-    const severity = severityForRule('HIGH_LATENCY', { avgLatencyMs });
-    const message = `Average latency last 60s: ${Math.round(avgLatencyMs)}ms (> 300ms)`;
-    const created = await createAlert({
-      type: 'HIGH_LATENCY',
-      severity,
-      title: pickTitle('HIGH_LATENCY'),
-      message,
-      metadata: { avgLatencyMs, windowSeconds: 60 },
-    });
-    if (created) createdAlerts.push(created);
-  }
+    // B) HIGH_LATENCY
+    if (typeof avgLatencyMs === 'number' && avgLatencyMs > 300) {
+      const severity = severityForRule('HIGH_LATENCY', { avgLatencyMs });
+      const message = `Average latency last 60s: ${Math.round(avgLatencyMs)}ms (> 300ms)`;
+      // eslint-disable-next-line no-await-in-loop
+      const created = await createAlert({
+        user_id: userId,
+        type: 'HIGH_LATENCY',
+        severity,
+        title: pickTitle('HIGH_LATENCY'),
+        message,
+        metadata: { avgLatencyMs, windowSeconds: 60 },
+      });
+      if (created) createdAlerts.push(created);
+    }
 
-  // C) ERROR_SPIKE
-  if (error.total > 0 && error.errorRate > 0.1) {
-    const severity = severityForRule('ERROR_SPIKE', { errorRate: error.errorRate });
-    const pct = Math.round(error.errorRate * 1000) / 10;
-    const message = `Failed requests last 60s: ${error.failed}/${error.total} (${pct}%) (> 10%)`;
-    const created = await createAlert({
-      type: 'ERROR_SPIKE',
-      severity,
-      title: pickTitle('ERROR_SPIKE'),
-      message,
-      metadata: { failed: error.failed, total: error.total, errorRate: error.errorRate, windowSeconds: 60 },
-    });
-    if (created) createdAlerts.push(created);
-  }
+    // C) ERROR_SPIKE
+    if (error.total > 0 && error.errorRate > 0.1) {
+      const severity = severityForRule('ERROR_SPIKE', { errorRate: error.errorRate });
+      const pct = Math.round(error.errorRate * 1000) / 10;
+      const message = `Failed requests last 60s: ${error.failed}/${error.total} (${pct}%) (> 10%)`;
+      // eslint-disable-next-line no-await-in-loop
+      const created = await createAlert({
+        user_id: userId,
+        type: 'ERROR_SPIKE',
+        severity,
+        title: pickTitle('ERROR_SPIKE'),
+        message,
+        metadata: { failed: error.failed, total: error.total, errorRate: error.errorRate, windowSeconds: 60 },
+      });
+      if (created) createdAlerts.push(created);
+    }
 
-  // D) SUSPICIOUS_IP
-  const suspicious = topIps.filter((x) => Number(x?.count) > 20 && x?.ip);
-  for (const ipRow of suspicious) {
-    const ip = String(ipRow.ip);
-    const requestsFromIp = Number(ipRow.count);
-    const severity = severityForRule('SUSPICIOUS_IP', { requestsFromIp });
-    const message = `IP ${ip} sent ${requestsFromIp} requests in last 60s (> 20)`;
+    // D) SUSPICIOUS_IP
+    const suspicious = topIps.filter((x) => Number(x?.count) > 20 && x?.ip);
+    for (const ipRow of suspicious) {
+      const ip = String(ipRow.ip);
+      const requestsFromIp = Number(ipRow.count);
+      const severity = severityForRule('SUSPICIOUS_IP', { requestsFromIp });
+      const message = `IP ${ip} sent ${requestsFromIp} requests in last 60s (> 20)`;
 
-    const created = await createAlert({
-      type: 'SUSPICIOUS_IP',
-      severity,
-      title: pickTitle('SUSPICIOUS_IP'),
-      message,
-      metadata: { ip, requestsFromIp, windowSeconds: 60 },
-    });
-    if (created) createdAlerts.push(created);
+      // eslint-disable-next-line no-await-in-loop
+      const created = await createAlert({
+        user_id: userId,
+        type: 'SUSPICIOUS_IP',
+        severity,
+        title: pickTitle('SUSPICIOUS_IP'),
+        message,
+        metadata: { ip, requestsFromIp, windowSeconds: 60 },
+      });
+      if (created) createdAlerts.push(created);
+    }
   }
 
   logInfo('tick complete', {
-    requestsLastMinute,
-    avgLatencyMs: typeof avgLatencyMs === 'number' ? Math.round(avgLatencyMs) : null,
-    errorRate: Math.round(error.errorRate * 10_000) / 100,
-    suspiciousIps: suspicious.length,
+    tenants: userIds.length,
     created: createdAlerts.length,
   });
 
   return {
     createdAlerts,
-    metrics: {
-      requestsLastMinute,
-      avgLatencyMs,
-      errorRate: error.errorRate,
-      failed: error.failed,
-      total: error.total,
-      topIps,
-    },
+    tenants: userIds.length,
   };
 }
 

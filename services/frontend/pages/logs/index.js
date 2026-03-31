@@ -1,7 +1,15 @@
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/router';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
+import Layout from '../../components/Layout';
+import ProtectedRoute from '../../components/ProtectedRoute';
+import useAuth from '../../hooks/useAuth';
+import { Button, Card, CardHeader, Table, TableSkeleton, TBody, TD, TH, THead, TR } from '../../ui';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL;
+
+if (!API_BASE) {
+  throw new Error('NEXT_PUBLIC_API_BASE_URL is not defined');
+}
 
 async function fetchLogs({ token, page, limit }) {
   const res = await fetch(`${API_BASE}/api/logs?page=${page}&limit=${limit}`, {
@@ -10,11 +18,13 @@ async function fetchLogs({ token, page, limit }) {
   if (!res.ok) {
     throw new Error(await res.text());
   }
-  return res.json();
+  const json = await res.json();
+  const data = json && typeof json === 'object' && 'data' in json ? json.data : json;
+  return data;
 }
 
 export default function LogsExplorer() {
-  const router = useRouter();
+  const { token } = useAuth();
   const [items, setItems] = useState([]);
   const [page, setPage] = useState(1);
   const [limit] = useState(20);
@@ -22,90 +32,101 @@ export default function LogsExplorer() {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    const token = localStorage.getItem('sentinelai_token');
-    if (!token) {
-      router.push('/login');
-      return;
+  async function load() {
+    if (!token) return;
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await fetchLogs({ token, page, limit });
+      setItems(Array.isArray(data.items) ? data.items : []);
+      setTotal(Number(data.total ?? 0));
+    } catch (e) {
+      setError(e?.message || String(e));
+    } finally {
+      setLoading(false);
     }
+  }
 
-    setLoading(true);
-    setError(null);
-
-    fetchLogs({ token, page, limit })
-      .then((data) => {
-        setItems(data.data || []);
-        setTotal(data.total || 0);
-      })
-      .catch((e) => setError(e.message || String(e)))
-      .finally(() => setLoading(false));
-  }, [router, page, limit]);
+  useEffect(() => {
+    if (!token) return;
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, page, limit]);
 
   const canPrev = page > 1;
   const canNext = page * limit < total;
 
+  function fmtTs(v) {
+    if (!v) return '-';
+    const d = new Date(v);
+    if (Number.isNaN(d.getTime())) return String(v);
+    return d.toLocaleString();
+  }
+
   return (
-    <div className="container">
-      <h1>Logs Explorer</h1>
+    <ProtectedRoute>
+      <Layout title="Logs Explorer" subtitle="Raw event telemetry" onRefresh={load} refreshing={loading}>
+      {error ? <Card className="mb-4 border-soc-critical/35 bg-soc-critical/10 text-ui-sm text-soc-text">{error}</Card> : null}
 
-      {error && (
-        <pre className="small" style={{ whiteSpace: 'pre-wrap', color: '#b91c1c' }}>
-          {error}
-        </pre>
-      )}
+      <Card className="overflow-hidden p-0">
+            <div className="border-b border-soc-border px-4 py-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <CardHeader
+                  title="Event Stream"
+                  subtitle={`Page ${page} · Total ${total}`}
+                  className="mb-0"
+                />
+                <div className="flex items-center gap-2">
+                  <Button type="button" variant="ghost" size="sm" disabled={!canPrev || loading} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+                    Previous
+                  </Button>
+                  <Button type="button" variant="ghost" size="sm" disabled={!canNext || loading} onClick={() => setPage((p) => p + 1)}>
+                    Next
+                  </Button>
+                </div>
+              </div>
+            </div>
 
-      {loading && <div className="small">Loading…</div>}
-
-      {!loading && !items.length && <div className="small">No logs available</div>}
-
-      {!!items.length && (
-        <div className="card" style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th style={{ textAlign: 'left', padding: 8 }}>Timestamp</th>
-                <th style={{ textAlign: 'left', padding: 8 }}>Source</th>
-                <th style={{ textAlign: 'left', padding: 8 }}>Event Type</th>
-                <th style={{ textAlign: 'left', padding: 8 }}>Actor</th>
-                <th style={{ textAlign: 'left', padding: 8 }}>IP</th>
-                <th style={{ textAlign: 'left', padding: 8 }}>Attributes</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((l) => (
-                <tr key={l.event_id}>
-                  <td style={{ padding: 8 }}>
-                    <span className="small">{l.timestamp}</span>
-                  </td>
-                  <td style={{ padding: 8 }}>{l.source}</td>
-                  <td style={{ padding: 8 }}>{l.event_type}</td>
-                  <td style={{ padding: 8 }}>{l.actor || '-'}</td>
-                  <td style={{ padding: 8 }}>{l.ip || '-'}</td>
-                  <td style={{ padding: 8 }}>
-                    <pre className="small" style={{ margin: 0, whiteSpace: 'pre-wrap' }}>
-                      {JSON.stringify(l.attributes || {}, null, 2)}
-                    </pre>
-                  </td>
+            <Table minWidth={1040}>
+              <THead>
+                <tr>
+                  <TH>Timestamp</TH>
+                  <TH>Source</TH>
+                  <TH>Event Type</TH>
+                  <TH>Actor</TH>
+                  <TH>IP</TH>
+                  <TH>Attributes</TH>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      <div className="row" style={{ marginTop: 12, justifyContent: 'space-between' }}>
-        <div className="small">
-          Page {page} • Total {total}
-        </div>
-        <div className="row">
-          <button className="btn secondary" disabled={!canPrev} onClick={() => setPage((p) => Math.max(1, p - 1))}>
-            Previous page
-          </button>
-          <button className="btn secondary" disabled={!canNext} onClick={() => setPage((p) => p + 1)}>
-            Next page
-          </button>
-        </div>
-      </div>
-    </div>
+              </THead>
+              <TBody>
+                {loading ? (
+                  <TableSkeleton rows={10} cols={6} />
+                ) : items.length ? (
+                  items.map((l) => (
+                    <TR key={l._id}>
+                      <TD className="whitespace-nowrap">{fmtTs(l.timestamp)}</TD>
+                      <TD>{l.source || '-'}</TD>
+                      <TD className="font-mono">{l.event_type || '-'}</TD>
+                      <TD>{l.actor?.user || l.actor?.service || '-'}</TD>
+                      <TD className="font-mono">{l.network?.ip || '-'}</TD>
+                      <TD>
+                        <pre className="max-w-[520px] whitespace-pre-wrap break-words text-ui-xs text-soc-text/90">
+                          {JSON.stringify(l.attributes || {}, null, 2)}
+                        </pre>
+                      </TD>
+                    </TR>
+                  ))
+                ) : (
+                  <tr>
+                    <TD className="py-6 text-soc-muted" colSpan={6}>
+                      No logs available.
+                    </TD>
+                  </tr>
+                )}
+              </TBody>
+            </Table>
+      </Card>
+      </Layout>
+    </ProtectedRoute>
   );
 }

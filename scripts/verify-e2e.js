@@ -9,14 +9,17 @@ Usage:
   node scripts/verify-e2e.js
 
 Env overrides:
-  API_BASE=http://localhost:4000
+  API_BASE=https://your-backend-url
   EMAIL=admin@example.com
   PASSWORD=password123
   TIMEOUT_MS=20000
   POLL_INTERVAL_MS=500
 */
 
-const API_BASE = process.env.API_BASE || 'http://localhost:4000';
+const API_BASE = process.env.API_BASE || '';
+if (!API_BASE) {
+  throw new Error('Missing API_BASE. Set API_BASE=https://your-backend-url');
+}
 const DEFAULT_EMAIL = process.env.EMAIL || '';
 const PASSWORD = process.env.PASSWORD || 'password123';
 const TIMEOUT_MS = Number(process.env.TIMEOUT_MS || 20_000);

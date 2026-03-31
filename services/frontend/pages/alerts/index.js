@@ -1,161 +1,243 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { io } from 'socket.io-client';
-import Link from 'next/link';
-import { useRouter } from 'next/router';
+import Layout from '../../components/Layout';
+import ProtectedRoute from '../../components/ProtectedRoute';
+import useAuth from '../../hooks/useAuth';
+import { Button, ButtonLink, Card, CardHeader, Select, SeverityBadge, Table, TableSkeleton, TBody, TD, TH, THead, TR, cn } from '../../ui';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL;
 
-function classNames(...xs) {
-  return xs.filter(Boolean).join(' ');
+if (!API_BASE) {
+  throw new Error('NEXT_PUBLIC_API_BASE_URL is not defined');
 }
 
-function badgeTone(sev) {
+function sevTone(sev) {
   const s = String(sev ?? '').toLowerCase();
-  if (s === 'critical') return 'bg-red-400/10 text-red-200 ring-1 ring-red-500/20';
-  if (s === 'high') return 'bg-orange-400/10 text-orange-200 ring-1 ring-orange-500/20';
-  if (s === 'medium') return 'bg-amber-400/10 text-amber-200 ring-1 ring-amber-500/20';
-  if (s === 'low') return 'bg-emerald-400/10 text-emerald-200 ring-1 ring-emerald-500/20';
-  return 'bg-slate-400/10 text-slate-200 ring-1 ring-slate-500/20';
+  if (s === 'critical') return { row: 'bg-soc-critical/4' };
+  if (s === 'high') return { row: 'bg-soc-critical/3' };
+  if (s === 'medium') return { row: 'bg-soc-warning/3' };
+  if (s === 'low') return { row: 'bg-soc-success/3' };
+  return { row: '' };
 }
 
-function badge(sev) {
-  return (
-    <span className={classNames('rounded-full px-2.5 py-1 text-xs font-medium', badgeTone(sev))}>
-      {sev}
-    </span>
-  );
+function toDate(v) {
+  if (!v) return null;
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return null;
+  return d;
 }
 
 function fmtTime(v) {
-  if (!v) return '-';
-  const d = new Date(v);
-  if (Number.isNaN(d.getTime())) return '-';
-  return d.toLocaleTimeString();
+  const d = toDate(v);
+  if (!d) return '-';
+  return d.toLocaleString(undefined, { hour: '2-digit', minute: '2-digit', month: 'short', day: '2-digit' });
 }
 
 export default function Alerts() {
-  const router = useRouter();
+  const { token } = useAuth();
+
   const [items, setItems] = useState([]);
-  const [error, setError] = useState(null);
+  const [expandedId, setExpandedId] = useState('');
+  const [severity, setSeverity] = useState('all');
+  const [timeRange, setTimeRange] = useState('24h');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  useEffect(() => {
-    const token = localStorage.getItem('sentinelai_token');
-    if (!token) {
-      router.push('/login');
-      return;
-    }
-
-    (async () => {
-      const res = await fetch(`${API_BASE}/api/alerts?limit=50`, {
+  async function load(limit = 50) {
+    if (!token) return;
+    try {
+      setLoading(true);
+      setError('');
+      const res = await fetch(`${API_BASE}/api/alerts?limit=${encodeURIComponent(limit)}`, {
         headers: { authorization: `Bearer ${token}` },
       });
       if (!res.ok) {
-        setError(await res.text());
-        return;
+        const txt = await res.text().catch(() => 'Failed to load alerts');
+        throw new Error(txt);
       }
-      const data = await res.json();
-      setItems(data.items || []);
-    })();
-  }, [router]);
+      const json = await res.json().catch(() => ({}));
+      const data = json && typeof json === 'object' && 'data' in json ? json.data : json;
+      setItems(Array.isArray(data.items) ? data.items : []);
+    } catch (e) {
+      setError(e?.message || 'Failed to load alerts');
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
-    let cancelled = false;
-    const token = localStorage.getItem('sentinelai_token');
+    if (!token) return;
+    load(75);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+
+  useEffect(() => {
     if (!token) return undefined;
+    let cancelled = false;
 
     async function refresh() {
       try {
-        const res = await fetch(`${API_BASE}/api/alerts?limit=50`, { headers: { authorization: `Bearer ${token}` } });
-        const data = await res.json();
-        if (res.ok && !cancelled) setItems(data.items || []);
+        const res = await fetch(`${API_BASE}/api/alerts?limit=75`, { headers: { authorization: `Bearer ${token}` } });
+        const json = await res.json().catch(() => ({}));
+        const data = json && typeof json === 'object' && 'data' in json ? json.data : json;
+        if (res.ok && !cancelled) setItems(Array.isArray(data.items) ? data.items : []);
       } catch {
-        // best-effort; page already shows errors for initial load
+        // best-effort
       }
     }
 
-    const socket = io(API_BASE);
-
-    socket.on('connect_error', () => {
-      // no-op; best-effort realtime
-    });
-
-    socket.on('alert_created', () => {
-      refresh();
-    });
+    const socket = io(API_BASE, { auth: { token } });
+    socket.on('alert_created', () => refresh());
 
     return () => {
       cancelled = true;
       socket.disconnect();
     };
-  }, []);
+  }, [token]);
+
+  const filtered = useMemo(() => {
+    const now = Date.now();
+    const windowMs =
+      timeRange === '1h'
+        ? 60 * 60 * 1000
+        : timeRange === '24h'
+          ? 24 * 60 * 60 * 1000
+          : timeRange === '7d'
+            ? 7 * 24 * 60 * 60 * 1000
+            : Infinity;
+
+    return (Array.isArray(items) ? items : [])
+      .filter((a) => (severity === 'all' ? true : String(a?.severity ?? '').toLowerCase() === severity))
+      .filter((a) => {
+        if (windowMs === Infinity) return true;
+        const dt = toDate(a?.createdAt) || toDate(a?.first_seen) || toDate(a?.window_start);
+        if (!dt) return true;
+        return now - dt.getTime() <= windowMs;
+      });
+  }, [items, severity, timeRange]);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <div className="text-xs font-medium text-slate-400">SentinelAI</div>
-            <h1 className="mt-1 text-2xl font-semibold tracking-tight">Alerts</h1>
-          </div>
+    <ProtectedRoute>
+      <Layout
+      title="Alerts"
+      subtitle="Triage queue with realtime updates"
+      onRefresh={() => load(75)}
+      refreshing={loading}
+      rightSlot={
+        <div className="hidden items-center gap-2 sm:flex">
+          <Select className="w-[160px]" value={severity} onChange={(e) => setSeverity(e.target.value)}>
+            <option value="all">All severity</option>
+            <option value="critical">Critical</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+          </Select>
+          <Select className="w-[140px]" value={timeRange} onChange={(e) => setTimeRange(e.target.value)}>
+            <option value="1h">Last 1h</option>
+            <option value="24h">Last 24h</option>
+            <option value="7d">Last 7d</option>
+            <option value="all">All time</option>
+          </Select>
+        </div>
+      }
+      >
+      {error ? <Card className="border-soc-critical/35 bg-soc-critical/10 text-ui-sm text-soc-text">{error}</Card> : null}
 
-          <button
-            type="button"
-            className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm font-medium text-slate-300 hover:bg-slate-900/40"
-            onClick={() => {
-              localStorage.removeItem('sentinelai_token');
-              router.push('/login');
-            }}
-          >
-            Logout
-          </button>
+      <Card className="mt-4 overflow-hidden p-0">
+        <div className="border-b border-soc-border px-4 py-3">
+          <CardHeader
+            title="Alert Stream"
+            right={<span className="text-ui-xs text-soc-muted">Showing {filtered.length} items</span>}
+            className="mb-0"
+          />
         </div>
 
-        {error ? (
-          <div className="mt-4 rounded-2xl border border-red-900/40 bg-red-950/30 p-4 text-sm text-red-200">
-            {error}
-          </div>
-        ) : null}
+        <Table minWidth={920}>
+              <THead>
+                <tr>
+                  <TH>Title</TH>
+                  <TH>Severity</TH>
+                  <TH>Type</TH>
+                  <TH>Status</TH>
+                  <TH>Last Seen</TH>
+                  <TH />
+                </tr>
+              </THead>
+              <TBody>
+                {loading ? (
+                  <TableSkeleton rows={8} cols={6} />
+                ) : filtered.length ? (
+                  filtered.map((a) => {
+                    const t = sevTone(a?.severity);
+                    const isExpanded = expandedId && String(a?._id) === String(expandedId);
+                    return (
+                      <Fragment key={a._id}>
+                        <TR className={cn(t.row)}>
+                          <TD>
+                            <div className="truncate font-semibold text-soc-text">{a.title}</div>
+                            <div className="mt-1 truncate text-ui-xs text-soc-muted">{a.reason}</div>
+                          </TD>
+                          <TD>
+                            <SeverityBadge severity={a.severity} />
+                          </TD>
+                          <TD className="text-soc-muted">{a.type || a.threat_type || '-'}</TD>
+                          <TD className="text-soc-muted">{a.status || '-'}</TD>
+                          <TD className="text-soc-muted">{fmtTime(a.last_seen ?? a.updatedAt ?? a.createdAt)}</TD>
+                          <TD className="text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => setExpandedId((cur) => (cur && cur === a._id ? '' : String(a._id)))}
+                              >
+                                {isExpanded ? 'Collapse' : 'Expand'}
+                              </Button>
+                              <ButtonLink href={`/alerts/${a._id}`} variant="primary" size="sm">
+                                Investigate
+                              </ButtonLink>
+                            </div>
+                          </TD>
+                        </TR>
 
-        <div className="mt-6 grid grid-cols-1 gap-4">
-          {items.map((a) => (
-            <Link key={a._id} href={`/alerts/${a._id}`} className="block">
-              <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 shadow-sm hover:bg-slate-900">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <div className="text-sm font-semibold text-slate-100">{a.title}</div>
-                    <div className="mt-1 text-xs text-slate-400">
-                      {a.threat_type} • {a.status}
-                    </div>
-                  </div>
-                  {badge(a.severity)}
-                </div>
-
-                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-                  <div className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2">
-                    <div className="text-xs text-slate-400">Events</div>
-                    <div className="mt-0.5 text-sm text-slate-100">{a.event_count ?? a.counts?.occurrences ?? 1}</div>
-                  </div>
-                  <div className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2">
-                    <div className="text-xs text-slate-400">First Seen</div>
-                    <div className="mt-0.5 text-sm text-slate-100">
-                      {fmtTime(a.first_seen ?? a.counts?.first_seen_at ?? a.createdAt)}
-                    </div>
-                  </div>
-                  <div className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2">
-                    <div className="text-xs text-slate-400">Last Seen</div>
-                    <div className="mt-0.5 text-sm text-slate-100">
-                      {fmtTime(a.last_seen ?? a.counts?.last_seen_at ?? a.updatedAt)}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-3 text-sm text-slate-200">{a.reason}</div>
-              </div>
-            </Link>
-          ))}
-          {!items.length ? <div className="text-sm text-slate-400">No alerts yet.</div> : null}
-        </div>
-      </div>
-    </div>
+                        {isExpanded ? (
+                          <TR className="bg-black/10 hover:bg-black/10">
+                            <TD colSpan={6} className="py-4">
+                              <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+                                <Card className="bg-black/10 p-3 shadow-none" padding="md">
+                                  <div className="text-ui-xs font-semibold text-soc-muted">Source IP</div>
+                                  <div className="mt-1 font-mono text-ui-base text-soc-text">{a.source_ip || '-'}</div>
+                                </Card>
+                                <Card className="bg-black/10 p-3 shadow-none" padding="md">
+                                  <div className="text-ui-xs font-semibold text-soc-muted">Actor</div>
+                                  <div className="mt-1 text-ui-base text-soc-text">{a.actor || '-'}</div>
+                                </Card>
+                                <Card className="bg-black/10 p-3 shadow-none" padding="md">
+                                  <div className="text-ui-xs font-semibold text-soc-muted">Events</div>
+                                  <div className="mt-1 text-ui-base text-soc-text">{a.event_count ?? a.counts?.occurrences ?? 1}</div>
+                                </Card>
+                                <Card className="bg-black/10 p-3 shadow-none" padding="md">
+                                  <div className="text-ui-xs font-semibold text-soc-muted">First Seen</div>
+                                  <div className="mt-1 text-ui-base text-soc-text">{fmtTime(a.first_seen ?? a.createdAt)}</div>
+                                </Card>
+                              </div>
+                            </TD>
+                          </TR>
+                        ) : null}
+                      </Fragment>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <TD className="py-8 text-soc-muted" colSpan={6}>
+                      No alerts match the current filters.
+                    </TD>
+                  </tr>
+                )}
+              </TBody>
+            </Table>
+      </Card>
+      </Layout>
+    </ProtectedRoute>
   );
 }

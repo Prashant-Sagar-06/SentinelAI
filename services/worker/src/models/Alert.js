@@ -2,7 +2,12 @@ import mongoose from 'mongoose';
 
 const AlertSchema = new mongoose.Schema(
   {
+    user_id: { type: String, default: null, index: true },
     event_id: { type: mongoose.Schema.Types.ObjectId, required: true, index: true, ref: 'LogEvent' },
+
+    // Optional: align anomaly/alert/response on the same minute bucket when applicable.
+    // For AI anomaly alerts this matches metrics_minute.timestamp_minute.
+    timestamp_minute: { type: Date, default: null, index: true },
 
     // ---- Intelligent Alert Engine (rule-based) fields ----
     type: { type: String, index: true },
@@ -43,6 +48,6 @@ AlertSchema.index({ group_key: 1, status: 1 });
 AlertSchema.index({ group_key: 1, status: 1, createdAt: -1 });
 // Prevent duplicate alerts for the same group within the same 5-minute window.
 // Sparse keeps legacy docs (without window_start) from conflicting.
-AlertSchema.index({ group_key: 1, status: 1, window_start: 1 }, { unique: true, sparse: true });
+AlertSchema.index({ user_id: 1, group_key: 1, status: 1, window_start: 1 }, { unique: true, sparse: true });
 
 export const Alert = mongoose.model('Alert', AlertSchema);

@@ -10,7 +10,10 @@ function roomForUser(userId) {
 
 export function initSocket(server) {
   io = new Server(server, {
-    cors: { origin: '*' },
+    cors: {
+      origin: config.corsOrigins.includes('*') ? '*' : config.corsOrigins,
+      credentials: true,
+    },
   });
 
   io.on('connection', (socket) => {

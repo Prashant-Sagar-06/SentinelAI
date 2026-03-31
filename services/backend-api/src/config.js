@@ -11,7 +11,9 @@ function parseCsv(value) {
 
 export const config = {
   nodeEnv: process.env.NODE_ENV ?? 'development',
-  port: Number(process.env.BACKEND_PORT ?? 4000),
+  // Prefer the platform-provided PORT (Render/Railway/etc.).
+  // BACKEND_PORT is kept for backward-compat in local/dev.
+  port: Number(process.env.PORT ?? process.env.BACKEND_PORT ?? 4000),
   trustProxy: Number(process.env.TRUST_PROXY ?? 0),
   logLevel: process.env.LOG_LEVEL ?? ((process.env.NODE_ENV ?? 'development') === 'production' ? 'info' : 'debug'),
   logPretty: String(process.env.LOG_PRETTY ?? '1') !== '0',
@@ -20,8 +22,7 @@ export const config = {
   mongoUrl: process.env.MONGO_URL,
   redisUrl: process.env.REDIS_URL,
   jwtSecret: process.env.JWT_SECRET,
-  corsOrigin: process.env.CORS_ORIGIN ?? 'http://localhost:3000',
-  corsOrigins: parseCsv(process.env.CORS_ORIGIN ?? 'http://localhost:3000'),
+  corsOrigins: parseCsv(process.env.CORS_ORIGIN),
   rateLimitPerMinute: Number(process.env.RATE_LIMIT_PER_MINUTE ?? 120),
 
   aiEngineUrl: process.env.AI_ENGINE_URL ?? '',
@@ -39,7 +40,7 @@ export const config = {
 
 export function requireEnv() {
   const missing = [];
-  for (const key of ['MONGO_URL', 'REDIS_URL', 'JWT_SECRET']) {
+  for (const key of ['MONGO_URL', 'REDIS_URL', 'JWT_SECRET', 'CORS_ORIGIN', 'AI_ENGINE_URL']) {
     if (!process.env[key]) missing.push(key);
   }
 

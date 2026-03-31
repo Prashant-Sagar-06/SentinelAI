@@ -4,12 +4,16 @@
   Justification = 'This script uses PSCredential (Get-Credential) and does not accept plaintext password parameters.'
 )]
 param(
-  [string]$BaseUrl = "http://localhost:4000",
+  [string]$BaseUrl = "https://your-backend-url",
   [string]$Email = "demo@soc.local",
   [pscredential]$Credential
 )
 
 $ErrorActionPreference = 'Stop'
+
+if (-not $BaseUrl -or $BaseUrl -eq 'https://your-backend-url') {
+  throw 'Missing -BaseUrl. Example: ./scripts/curl-demo.ps1 -BaseUrl https://your-backend-url'
+}
 
 function Write-Step([string]$msg) {
   Write-Host "`n=== $msg ===" -ForegroundColor Cyan

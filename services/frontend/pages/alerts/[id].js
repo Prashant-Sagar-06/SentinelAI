@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
-import Link from 'next/link';
+import toast from 'react-hot-toast';
+import { ChevronLeft } from 'lucide-react';
+
+import Layout from '../../components/Layout';
+import ProtectedRoute from '../../components/ProtectedRoute';
+import useAuth from '../../hooks/useAuth';
+import { Button, ButtonLink, Card, CardHeader, Input, SeverityBadge, Table, TBody, TD, TH, THead, TR } from '../../ui';
 
 import {
   Area,
@@ -12,11 +18,16 @@ import {
   YAxis,
 } from 'recharts';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL;
+
+if (!API_BASE) {
+  throw new Error('NEXT_PUBLIC_API_BASE_URL is not defined');
+}
 
 export default function AlertDetail() {
   const router = useRouter();
   const { id } = router.query;
+  const { token } = useAuth();
   const [alert, setAlert] = useState(null);
   const [relatedLogs, setRelatedLogs] = useState([]);
   const [aiAnalysis, setAiAnalysis] = useState(null);
@@ -25,49 +36,56 @@ export default function AlertDetail() {
   const [actionLoading, setActionLoading] = useState(false);
   const [assignTo, setAssignTo] = useState('');
 
-  useEffect(() => {
-    if (!id) return;
-    const token = localStorage.getItem('sentinelai_token');
-    if (!token) {
-      router.push('/login');
-      return;
+  async function loadAlert(nextToken) {
+    if (!id || !nextToken) return;
+
+    const res = await fetch(`${API_BASE}/api/alerts/${id}`, {
+      headers: { authorization: `Bearer ${nextToken}` },
+    });
+
+    if (!res.ok) {
+      const txt = await res.text().catch(() => 'Failed to load alert');
+      throw new Error(txt);
     }
 
+    const json = await res.json().catch(() => ({}));
+    const data = json && typeof json === 'object' && 'data' in json ? json.data : json;
+    setAlert(data.alert);
+    setRelatedLogs(Array.isArray(data.related_logs) ? data.related_logs : []);
+    setAiAnalysis(data.ai_analysis || null);
+  }
+
+  useEffect(() => {
+    if (!id || !token) return;
+    let cancelled = false;
+
     (async () => {
-      const res = await fetch(`${API_BASE}/api/alerts/${id}`, {
-        headers: { authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) {
-        setError(await res.text());
-        return;
+      try {
+        setError(null);
+        await loadAlert(token);
+      } catch (e) {
+        if (cancelled) return;
+        setError(e?.message || 'Failed to load alert');
       }
-      const data = await res.json();
-      setAlert(data.alert);
-      setRelatedLogs(Array.isArray(data.related_logs) ? data.related_logs : []);
-      setAiAnalysis(data.ai_analysis || null);
     })();
-  }, [id, router]);
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, token]);
 
   async function refresh() {
-    const token = localStorage.getItem('sentinelai_token');
     if (!token) return;
-    const res = await fetch(`${API_BASE}/api/alerts/${id}`, {
-      headers: { authorization: `Bearer ${token}` },
-    });
-    const data = await res.json().catch(() => ({}));
-    if (res.ok) {
-      setAlert(data.alert);
-      setRelatedLogs(Array.isArray(data.related_logs) ? data.related_logs : []);
-      setAiAnalysis(data.ai_analysis || null);
+    try {
+      await loadAlert(token);
+    } catch {
+      // best-effort
     }
   }
 
   async function action(path, body) {
-    const token = localStorage.getItem('sentinelai_token');
-    if (!token) {
-      router.push('/login');
-      return;
-    }
+    if (!token) return;
 
     try {
       setActionLoading(true);
@@ -83,24 +101,19 @@ export default function AlertDetail() {
       });
 
       const json = await res.json().catch(() => ({}));
+      const data = json && typeof json === 'object' && 'data' in json ? json.data : json;
       if (!res.ok) throw new Error(json?.error || (await res.text().catch(() => 'Action failed')));
-      if (json?.alert) setAlert(json.alert);
+      if (data?.alert) setAlert(data.alert);
       await refresh();
+      toast.success('Action completed');
     } catch (e) {
-      setError(e?.message || 'Action failed');
+      const msg = e?.message || 'Action failed';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setActionLoading(false);
     }
   }
-
-  const severityTone = useMemo(() => {
-    const s = String(alert?.severity ?? '').toLowerCase();
-    if (s === 'critical') return 'bg-red-400/10 text-red-200 ring-red-500/20';
-    if (s === 'high') return 'bg-orange-400/10 text-orange-200 ring-orange-500/20';
-    if (s === 'medium') return 'bg-amber-400/10 text-amber-200 ring-amber-500/20';
-    if (s === 'low') return 'bg-emerald-400/10 text-emerald-200 ring-emerald-500/20';
-    return 'bg-slate-400/10 text-slate-200 ring-slate-500/20';
-  }, [alert?.severity]);
 
   const timeline = useMemo(() => {
     const buckets = new Map();
@@ -125,222 +138,219 @@ export default function AlertDetail() {
   function TooltipContent({ active, payload, label }) {
     if (!active || !payload || !payload.length) return null;
     return (
-      <div className="rounded-xl border border-slate-700 bg-slate-950/95 px-3 py-2 text-xs text-slate-100 shadow-lg">
-        <div className="text-slate-300">{label}</div>
+      <div className="rounded-xl border border-soc-border bg-soc-bg/90 px-3 py-2 text-xs text-soc-text shadow-card">
+        <div className="text-soc-muted">{label}</div>
         <div className="mt-1 flex items-center justify-between gap-6">
-          <span className="text-slate-300">Events</span>
-          <span className="font-semibold text-slate-100">{payload[0]?.value ?? 0}</span>
+          <span className="text-soc-muted">Events</span>
+          <span className="font-semibold text-soc-text">{payload[0]?.value ?? 0}</span>
         </div>
       </div>
     );
   }
 
+  const createdAt = useMemo(() => {
+    const v = alert?.createdAt || alert?.first_seen || alert?.window_start;
+    if (!v) return null;
+    const d = new Date(v);
+    if (Number.isNaN(d.getTime())) return null;
+    return d;
+  }, [alert?.createdAt, alert?.first_seen, alert?.window_start]);
+
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <Link
-              href="/alerts"
-              className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm font-medium text-slate-200 hover:bg-slate-900/40"
-            >
-              ← Back
-            </Link>
-            <div>
-              <div className="text-xs font-medium text-slate-400">Alert Investigation</div>
-              <h1 className="mt-1 text-xl font-semibold tracking-tight">{alert?.title || 'Loading…'}</h1>
-            </div>
-          </div>
+    <ProtectedRoute>
+      <Layout
+      title="Alert Investigation"
+      subtitle={
+        alert
+          ? `${String(alert?.severity || 'unknown').toUpperCase()} · ${alert?.status || 'Unknown'}${createdAt ? ` · ${createdAt.toLocaleString()}` : ''}`
+          : 'Loading investigation context'
+      }
+      onRefresh={refresh}
+      refreshing={!alert && !error}
+      rightSlot={
+        <ButtonLink href="/alerts" variant="ghost" size="sm">
+          <ChevronLeft className="h-4 w-4" />
+          <span className="hidden sm:inline">Back</span>
+        </ButtonLink>
+      }
+    >
+      {error ? <Card className="mb-4 border-soc-critical/35 bg-soc-critical/10 text-ui-sm text-soc-text">{error}</Card> : null}
 
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              className="rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-2 text-sm font-medium text-slate-200 hover:bg-slate-900 disabled:opacity-60"
-              onClick={() => action('ack')}
-              disabled={!alert || actionLoading}
-            >
-              ACK
-            </button>
-            <button
-              type="button"
-              className="rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-2 text-sm font-medium text-slate-200 hover:bg-slate-900 disabled:opacity-60"
-              onClick={() => action('close')}
-              disabled={!alert || actionLoading}
-            >
-              Resolve
-            </button>
-          </div>
-        </div>
-
-        {error ? (
-          <div className="mt-4 rounded-2xl border border-red-900/40 bg-red-950/30 p-4 text-sm text-red-200">
-            {error}
-          </div>
-        ) : null}
-
-        {!alert ? (
-          <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-sm text-slate-300">
-            Loading alert…
-          </div>
-        ) : (
-          <div className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-3">
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 shadow-sm xl:col-span-2">
+      {!alert ? (
+        <Card className="text-ui-sm text-soc-muted">Loading alert…</Card>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+            <Card className="xl:col-span-2">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="text-sm font-semibold text-slate-200">Alert</div>
-                <div className={`rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${severityTone}`}>{alert.severity}</div>
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold text-soc-muted">Alert</div>
+                  <div className="mt-1 truncate text-lg font-semibold text-soc-text">{alert?.title || 'Alert'}</div>
+                </div>
+                <SeverityBadge severity={alert?.severity} />
               </div>
 
               <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <div className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2">
-                  <div className="text-xs text-slate-400">Status</div>
-                  <div className="mt-0.5 text-sm text-slate-100">{alert.status}</div>
+                <div className="rounded-control border border-soc-border bg-black/10 px-3 py-2">
+                  <div className="text-xs text-soc-muted">Status</div>
+                  <div className="mt-0.5 text-sm text-soc-text">{alert?.status || '-'}</div>
                 </div>
-                <div className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2">
-                  <div className="text-xs text-slate-400">Threat Type</div>
-                  <div className="mt-0.5 text-sm text-slate-100">{alert.threat_type}</div>
+                <div className="rounded-control border border-soc-border bg-black/10 px-3 py-2">
+                  <div className="text-xs text-soc-muted">Threat Type</div>
+                  <div className="mt-0.5 text-sm text-soc-text">{alert?.threat_type || '-'}</div>
                 </div>
-                <div className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2">
-                  <div className="text-xs text-slate-400">Source IP</div>
-                  <div className="mt-0.5 text-sm font-mono text-slate-100">{alert.source_ip || '-'}</div>
+                <div className="rounded-control border border-soc-border bg-black/10 px-3 py-2">
+                  <div className="text-xs text-soc-muted">Source IP</div>
+                  <div className="mt-0.5 text-sm font-mono text-soc-text">{alert?.source_ip || '-'}</div>
                 </div>
-                <div className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2">
-                  <div className="text-xs text-slate-400">Actor</div>
-                  <div className="mt-0.5 text-sm text-slate-100">{alert.actor || '-'}</div>
+                <div className="rounded-control border border-soc-border bg-black/10 px-3 py-2">
+                  <div className="text-xs text-soc-muted">Actor</div>
+                  <div className="mt-0.5 text-sm text-soc-text">{alert?.actor || '-'}</div>
                 </div>
               </div>
 
-              <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2">
-                <div className="text-xs text-slate-400">Reason</div>
-                <div className="mt-0.5 text-sm text-slate-100">{alert.reason}</div>
+              <div className="mt-3 rounded-control border border-soc-border bg-black/10 px-3 py-2">
+                <div className="text-xs text-soc-muted">Reason</div>
+                <div className="mt-0.5 text-sm text-soc-text">{alert?.reason || '-'}</div>
               </div>
-            </div>
+            </Card>
 
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 shadow-sm">
-              <div className="mb-3 flex items-center justify-between gap-4">
-                <div className="text-sm font-semibold text-slate-200">Actions</div>
-                <div className="text-xs text-slate-400">Assignment</div>
+            <Card>
+              <CardHeader title="Actions" subtitle="Triage & assignment" />
+
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => action('ack')}
+                  disabled={actionLoading}
+                  loading={actionLoading}
+                >
+                  ACK
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => action('close')}
+                  disabled={actionLoading}
+                  loading={actionLoading}
+                >
+                  Resolve
+                </Button>
               </div>
 
-              <div className="grid gap-2">
-                <input
+              <div className="mt-3 grid gap-2">
+                <Input
                   value={assignTo}
                   onChange={(e) => setAssignTo(e.target.value)}
-                  placeholder={alert.assigned_to ? `Assigned to: ${alert.assigned_to}` : 'Assign to (email or name)'}
-                  className="w-full rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500"
+                  placeholder={alert?.assigned_to ? `Assigned to: ${alert.assigned_to}` : 'Assign to (email or name)'}
                 />
-                <button
+                <Button
                   type="button"
-                  className="rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-2 text-sm font-medium text-slate-200 hover:bg-slate-900 disabled:opacity-60"
+                  variant="primary"
                   onClick={() => action('assign', { assigned_to: assignTo.trim() || null })}
                   disabled={actionLoading}
+                  loading={actionLoading}
                 >
                   Assign
-                </button>
+                </Button>
               </div>
 
-              <div className="mt-3 text-xs text-slate-400">
-                Current: <span className="text-slate-200">{alert.assigned_to || 'Unassigned'}</span>
+              <div className="mt-3 text-xs text-soc-muted">
+                Current: <span className="text-soc-text">{alert?.assigned_to || 'Unassigned'}</span>
               </div>
-            </div>
-          </div>
-        )}
-
-        <div className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-2">
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 shadow-sm">
-            <div className="mb-3 flex items-center justify-between gap-4">
-              <div className="text-sm font-semibold text-slate-200">AI Analysis</div>
-              <div className="text-xs text-slate-400">Anomaly explanations</div>
-            </div>
-
-            {aiAnalysis && Array.isArray(aiAnalysis.explanations) && aiAnalysis.explanations.length ? (
-              <ul className="list-disc space-y-1 pl-5 text-sm text-slate-200">
-                {aiAnalysis.explanations.map((e, idx) => (
-                  <li key={idx}>{e}</li>
-                ))}
-              </ul>
-            ) : (
-              <div className="text-sm text-slate-400">No AI explanations available for this alert.</div>
-            )}
+            </Card>
           </div>
 
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 shadow-sm">
-            <div className="mb-3 flex items-center justify-between gap-4">
-              <div className="text-sm font-semibold text-slate-200">Timeline</div>
-              <div className="text-xs text-slate-400">Related events over time</div>
-            </div>
+          <div className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-2">
+            <Card>
+              <CardHeader title="AI Analysis" subtitle="Anomaly explanations" />
 
-            <div className="h-56">
-              {timeline.length ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={timeline} margin={{ top: 8, right: 8, bottom: 0, left: -10 }}>
-                    <defs>
-                      <linearGradient id="eventsFill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#f97316" stopOpacity={0.25} />
-                        <stop offset="100%" stopColor="#f97316" stopOpacity={0.02} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid stroke="#1f2937" strokeDasharray="4 4" />
-                    <XAxis
-                      dataKey="time"
-                      tick={{ fill: '#94a3b8', fontSize: 12 }}
-                      axisLine={{ stroke: '#334155' }}
-                      tickLine={false}
-                    />
-                    <YAxis
-                      tick={{ fill: '#94a3b8', fontSize: 12 }}
-                      axisLine={{ stroke: '#334155' }}
-                      tickLine={false}
-                      allowDecimals={false}
-                    />
-                    <Tooltip content={<TooltipContent />} />
-                    <Area type="monotone" dataKey="events" stroke="#f97316" fill="url(#eventsFill)" strokeWidth={2} />
-                  </AreaChart>
-                </ResponsiveContainer>
+              {aiAnalysis && Array.isArray(aiAnalysis.explanations) && aiAnalysis.explanations.length ? (
+                <ul className="list-disc space-y-1 pl-5 text-sm text-soc-text">
+                  {aiAnalysis.explanations.map((e, idx) => (
+                    <li key={idx}>{e}</li>
+                  ))}
+                </ul>
               ) : (
-                <div className="flex h-full items-center justify-center text-xs text-slate-500">No related events yet.</div>
+                <div className="text-sm text-soc-muted">No AI explanations available for this alert.</div>
               )}
+            </Card>
+
+            <Card>
+              <CardHeader title="Timeline" subtitle="Related events over time" />
+
+              <div className="h-56">
+                {timeline.length ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={timeline} margin={{ top: 8, right: 8, bottom: 0, left: -10 }}>
+                      <defs>
+                        <linearGradient id="eventsFill" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#F59E0B" stopOpacity={0.25} />
+                          <stop offset="100%" stopColor="#F59E0B" stopOpacity={0.02} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid stroke="rgba(255,255,255,0.06)" strokeDasharray="4 4" />
+                      <XAxis
+                        dataKey="time"
+                        tick={{ fill: 'rgba(229,231,235,0.75)', fontSize: 12 }}
+                        axisLine={{ stroke: 'rgba(255,255,255,0.08)' }}
+                        tickLine={false}
+                      />
+                      <YAxis
+                        tick={{ fill: 'rgba(229,231,235,0.75)', fontSize: 12 }}
+                        axisLine={{ stroke: 'rgba(255,255,255,0.08)' }}
+                        tickLine={false}
+                        allowDecimals={false}
+                      />
+                      <Tooltip content={<TooltipContent />} />
+                      <Area type="monotone" dataKey="events" stroke="#F59E0B" fill="url(#eventsFill)" strokeWidth={2} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="flex h-full items-center justify-center text-xs text-soc-muted">No related events yet.</div>
+                )}
+              </div>
+            </Card>
+          </div>
+
+          <Card className="mt-6 overflow-hidden p-0">
+            <div className="border-b border-soc-border px-4 py-3">
+              <CardHeader title="Related Logs" subtitle="Last 20 matching source_ip or actor" className="mb-0" />
             </div>
-          </div>
-        </div>
 
-        <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-900/60 p-4 shadow-sm">
-          <div className="mb-3 flex items-center justify-between gap-4">
-            <div className="text-sm font-semibold text-slate-200">Related Logs</div>
-            <div className="text-xs text-slate-400">Last 20 matching source_ip or actor</div>
-          </div>
-
-          <div className="overflow-hidden rounded-xl border border-slate-800">
-            <table className="w-full border-collapse text-left text-sm">
-              <thead className="bg-slate-950/40">
+            <Table minWidth={860}>
+              <THead>
                 <tr>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-300">Timestamp</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-300">Event Type</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-300">Message</th>
+                  <TH>Timestamp</TH>
+                  <TH>Event Type</TH>
+                  <TH>Message</TH>
                 </tr>
-              </thead>
-              <tbody>
+              </THead>
+              <TBody>
                 {relatedLogs.length ? (
                   relatedLogs.map((ev) => (
-                    <tr key={ev._id} className="border-t border-slate-800">
-                      <td className="px-4 py-3 text-slate-200">
-                        {ev?.timestamp ? new Date(ev.timestamp).toLocaleString() : '-'}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-slate-100">{ev?.event_type || '-'}</td>
-                      <td className="px-4 py-3 text-slate-200">{ev?.message || '-'}</td>
-                    </tr>
+                    <TR key={ev._id}>
+                      <TD>{ev?.timestamp ? new Date(ev.timestamp).toLocaleString() : '-'}</TD>
+                      <TD className="font-mono">{ev?.event_type || '-'}</TD>
+                      <TD>{ev?.message || '-'}</TD>
+                    </TR>
                   ))
                 ) : (
                   <tr>
-                    <td className="px-4 py-6 text-slate-400" colSpan={3}>
+                    <TD className="py-6 text-soc-muted" colSpan={3}>
                       No related logs.
-                    </td>
+                    </TD>
                   </tr>
                 )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
+              </TBody>
+            </Table>
+          </Card>
+        </>
+      )}
+      </Layout>
+    </ProtectedRoute>
   );
 }

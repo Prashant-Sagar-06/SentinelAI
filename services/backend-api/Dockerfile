@@ -7,7 +7,7 @@ RUN npm install --omit=dev
 
 COPY src ./src
 
-ENV BACKEND_PORT=4000
+ENV PORT=4000
 EXPOSE 4000
 
 CMD ["npm", "start"]

@@ -6,6 +6,7 @@ import time
 import uuid
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pythonjsonlogger import jsonlogger
 
 from .anomaly import detect_anomaly
@@ -21,6 +22,28 @@ from .threat_intel import classify_source_ip
 from .threats import assess_threat
 
 app = FastAPI(title="SentinelAI AI Engine", version="0.1.0")
+
+
+def _parse_origins() -> list[str]:
+    raw = (
+        os.getenv("CORS_ORIGINS")
+        or os.getenv("CORS_ORIGIN")
+        or ""
+    )
+    parts = [p.strip() for p in raw.split(",") if p.strip()]
+    return parts
+
+
+_cors_origins = _parse_origins()
+_allow_all = ("*" in _cors_origins) or (not _cors_origins)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"] if _allow_all else _cors_origins,
+    allow_credentials=False if _allow_all else True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 MODEL_VERSION = "heuristic-v1"
 

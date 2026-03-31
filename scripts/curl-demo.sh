@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BASE_URL="${BASE_URL:-http://localhost:4000}"
+if [[ -z "${BASE_URL:-}" ]]; then
+  echo "Missing BASE_URL. Example: BASE_URL=https://your-backend-url" >&2
+  exit 1
+fi
 EMAIL="${EMAIL:-demo@soc.local}"
 
 echo "Base URL: ${BASE_URL}"
