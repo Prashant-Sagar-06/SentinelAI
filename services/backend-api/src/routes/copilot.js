@@ -136,15 +136,8 @@ copilotRouter.post('/analyze', validateBody(AnalyzeBodySchema), async (req, res,
     const safeAnomaly = toSafeAnomaly(anomaly);
 
     let normalized;
-    try {
-      const ai = await callAiEngineAnalyzeAlert({ alert: safeAlert, anomaly: safeAnomaly });
-      normalized = normalizeCopilotPayload(ai);
-    } catch {
-      // Best-effort fallback; never break the Copilot UI.
-      const messages = buildSocMessages(safeAlert);
-      const content = await generateCopilotResponse(messages);
-      normalized = normalizeCopilotPayload(content || '');
-    }
+    const ai = await callAiEngineAnalyzeAlert({ alert: safeAlert, anomaly: safeAnomaly });
+    normalized = normalizeCopilotPayload(ai);
 
     return ok(res, {
       alert_id: safeAlert.alert_id,

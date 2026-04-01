@@ -63,7 +63,7 @@ export function createSystemHealthRouter(analysisQueue) {
         });
         if (!r.ok) throw new Error('bad_status');
         const json = await r.json().catch(() => null);
-        if (!json || json.ok !== true) throw new Error('bad_body');
+        if (!json || json.status !== 'ok') throw new Error('bad_body');
       } finally {
         clearTimeout(t);
       }

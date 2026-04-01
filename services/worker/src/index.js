@@ -1,4 +1,5 @@
 import { Queue, Worker } from 'bullmq';
+import axios from 'axios';
 import Redis from 'ioredis';
 import mongoose from 'mongoose';
 
@@ -30,7 +31,10 @@ await Promise.allSettled([
   AnomalyResult.syncIndexes(),
 ]);
 
-const log = logger.child({ service: 'worker' });
+const log = logger;
+
+let aiFailures = 0;
+const MAX_AI_FAILURES = 5;
 
 const ONE_MINUTE_MS = 60_000;
 
@@ -46,7 +50,28 @@ const bullConnection = new Redis(config.redisUrl, {
   maxRetriesPerRequest: null,
   enableReadyCheck: true,
   lazyConnect: false,
+  enableOfflineQueue: false,
+  connectTimeout: 5000,
 });
+
+bullConnection.on("error", (err) => {
+  log.error({ err }, "redis_error_runtime");
+});
+
+bullConnection.on("end", () => {
+  log.error("❌ Redis connection closed");
+  process.exit(1);
+});
+
+try {
+  const pong = await bullConnection.ping();
+  if (pong !== 'PONG') {
+    throw new Error('bad_pong');
+  }
+} catch (e) {
+  log.error({ err: e }, 'redis_unavailable');
+  process.exit(1);
+}
 
 async function broadcastAlertCreated(alertDoc) {
   if (!alertDoc) return;
@@ -59,7 +84,7 @@ async function broadcastAlertCreated(alertDoc) {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        ...(config.internalBroadcastSecret ? { 'x-internal-secret': config.internalBroadcastSecret } : {}),
+        'x-internal-secret': config.internalBroadcastSecret,
       },
       body: JSON.stringify(payload),
     });
@@ -125,10 +150,9 @@ async function correlateIncidentFromAlert(alertDoc) {
   const filter = {
     ...(userId ? { user_id: userId } : {}),
     status: { $ne: 'resolved' },
-    // NOTE: Equality on array fields matches when the array contains the value.
-    // It also ensures the upsert has concrete values for these fields.
-    actors: actor,
-    source_ips: sourceIp,
+    // Use $in so upsert does not accidentally insert scalar values into array fields.
+    actors: { $in: [actor] },
+    source_ips: { $in: [sourceIp] },
   };
 
   const update = {
@@ -158,38 +182,75 @@ async function correlateIncidentFromAlert(alertDoc) {
   }
 }
 
-async function callAiEngine(normalizedEvent) {
-  const base = String(config.aiEngineUrl || '').replace(/\/$/, '');
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), Math.max(250, Number(config.aiEngineTimeoutMs ?? 4500)));
-  try {
-    const res = await fetch(`${base}/analyze`, {
-      method: 'POST',
-      signal: controller.signal,
-      headers: { 'content-type': 'application/json', accept: 'application/json' },
-      body: JSON.stringify({ event: normalizedEvent }),
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      throw new Error(`AI engine error ${res.status}: ${text.slice(0, 500)}`);
-    }
-    return res.json();
-  } finally {
-    clearTimeout(t);
+function assertNonEmptyString(value, name) {
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new Error(`ai_invalid_response:${name}`);
   }
 }
 
-function fallbackAnalysis(err) {
-  const msg = err?.name === 'AbortError' ? 'AI engine timeout' : (err?.message || 'AI engine unavailable');
-  return {
-    model_version: 'fallback-v1',
-    anomaly_score: 0.0,
-    risk_score: 0.0,
-    risk_level: 'low',
-    threat_type: 'unknown',
-    explanations: [msg],
-    features: { ai_engine_error: msg },
-  };
+function assertFiniteNumber(value, name) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) {
+    throw new Error(`ai_invalid_response:${name}`);
+  }
+  return n;
+}
+
+async function callAiEngine(normalizedEvent) {
+  const base = String(config.aiEngineUrl || '').replace(/\/$/, '');
+  const timeoutMs = Math.max(250, Number(config.aiEngineTimeoutMs ?? 8000));
+
+  if (aiFailures >= MAX_AI_FAILURES) {
+    throw new Error("AI temporarily disabled due to repeated failures");
+  }
+
+  try {
+    const res = await axios.post(
+      `${base}/analyze`,
+      { event: normalizedEvent },
+      {
+        timeout: timeoutMs,
+        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        validateStatus: () => true,
+      }
+    );
+
+    if (res.status < 200 || res.status >= 300) {
+      const body = typeof res.data === 'string' ? res.data : JSON.stringify(res.data ?? null);
+      throw new Error(`AI engine error ${res.status}: ${String(body).slice(0, 500)}`);
+    }
+
+    const analyzed = res.data;
+
+    if (!analyzed || typeof analyzed !== 'object') {
+      throw new Error('ai_invalid_response:body');
+    }
+
+    assertNonEmptyString(analyzed.model_version, 'model_version');
+    assertNonEmptyString(analyzed.threat_type, 'threat_type');
+    assertNonEmptyString(analyzed.risk_level, 'risk_level');
+
+    analyzed.risk_score = assertFiniteNumber(analyzed.risk_score, 'risk_score');
+    analyzed.anomaly_score = assertFiniteNumber(analyzed.anomaly_score, 'anomaly_score');
+
+    aiFailures = 0; // reset on success
+
+    return analyzed;
+
+  } catch (e) {
+    aiFailures++;
+
+    log.warn({
+      aiFailures,
+      err: e,
+    }, "ai_engine_failure");
+
+    if (axios.isAxiosError(e) && e.code === 'ECONNABORTED') {
+      throw new Error(`AI engine timeout after ${timeoutMs}ms`);
+    }
+
+    throw e;
+  }
 }
 
 const analysisQueue = new Queue('analysis-jobs', {
@@ -223,13 +284,7 @@ const worker = new Worker(
     };
 
     try {
-      let analyzed;
-      try {
-        analyzed = await callAiEngine(normalizedEvent);
-      } catch (e) {
-        analyzed = fallbackAnalysis(e);
-        log.warn({ job_id: job.id, event_id, err: e?.message }, 'ai engine failed; using fallback analysis');
-      }
+      const analyzed = await callAiEngine(normalizedEvent);
 
       log.info({
         job_id: job.id,
@@ -249,7 +304,7 @@ const worker = new Worker(
         {
           $set: {
             timestamp_minute: eventDoc.timestamp ? floorToUtcMinute(eventDoc.timestamp) : null,
-            model_version: analyzed.model_version ?? 'unknown',
+            model_version: analyzed.model_version,
             anomaly_score: analyzed.anomaly_score,
             risk_score: analyzed.risk_score,
             risk_level: analyzed.risk_level,
@@ -265,8 +320,7 @@ const worker = new Worker(
       );
 
       if (Number(analyzed.risk_score) < config.alertThresholdRisk) {
-        const status = analyzed?.model_version === 'fallback-v1' ? 'error' : 'done';
-        await LogEvent.findByIdAndUpdate(eventDoc._id, { analysis_status: status });
+        await LogEvent.findByIdAndUpdate(eventDoc._id, { analysis_status: 'done' });
         log.info({
           job_id: job.id,
           event_id,
@@ -452,6 +506,11 @@ async function heartbeat() {
     const mongoReadyState = mongoose.connection.readyState;
     const client = await worker.client;
     const pong = await client.ping();
+
+    if (pong !== 'PONG') {
+      throw new Error('redis_unhealthy');
+    }
+
     const counts = await analysisQueue.getJobCounts('waiting', 'active', 'failed', 'delayed');
 
     log.info(
@@ -474,9 +533,23 @@ const heartbeatTimer = setInterval(() => {
 heartbeatTimer.unref?.();
 
 async function shutdown(signal) {
-  log.info({ signal }, 'shutdown');
-  clearInterval(heartbeatTimer);
-  await Promise.allSettled([worker.close(), analysisQueue.close(), bullConnection.quit()]);
+  log.info({ signal }, 'shutdown_start');
+
+  try {
+    clearInterval(heartbeatTimer);
+
+    await Promise.allSettled([
+      worker.close(),
+      analysisQueue.close(),
+      bullConnection.quit(),
+    ]);
+
+    log.info('shutdown_complete');
+
+  } catch (e) {
+    log.error({ err: e }, 'shutdown_error');
+  }
+
   process.exit(0);
 }
 

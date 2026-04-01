@@ -72,25 +72,69 @@ export default function Alerts() {
   }, [token]);
 
   useEffect(() => {
-    if (!token) return undefined;
+    if (!token) return;
+
     let cancelled = false;
 
     async function refresh() {
       try {
-        const res = await fetch(`${API_BASE}/api/alerts?limit=75`, { headers: { authorization: `Bearer ${token}` } });
+        const res = await fetch(`${API_BASE}/api/alerts?limit=75`, {
+          headers: { authorization: `Bearer ${token}` },
+        });
+
         const json = await res.json().catch(() => ({}));
         const data = json && typeof json === 'object' && 'data' in json ? json.data : json;
-        if (res.ok && !cancelled) setItems(Array.isArray(data.items) ? data.items : []);
+
+        if (res.ok && !cancelled) {
+          setItems(Array.isArray(data.items) ? data.items : []);
+        }
       } catch {
         // best-effort
       }
     }
 
-    const socket = io(API_BASE, { auth: { token } });
-    socket.on('alert_created', () => refresh());
+    const socket = io(API_BASE, {
+      auth: { token },
+      transports: ['websocket'], // ✅ force websocket
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 2000,
+      timeout: 5000,
+    });
+
+    /* =========================
+       CONNECTION DEBUG
+    ========================= */
+
+    socket.on('connect', () => {
+      console.log('🔌 Alerts socket connected:', socket.id);
+    });
+
+    socket.on('disconnect', (reason) => {
+      console.warn('❌ Alerts socket disconnected:', reason);
+    });
+
+    socket.on('connect_error', (err) => {
+      console.error('❌ Alerts socket error:', err.message);
+    });
+
+    /* =========================
+       REALTIME HANDLER
+    ========================= */
+
+    const handleAlert = () => {
+      refresh();
+    };
+
+    socket.on('alert_created', handleAlert);
+
+    /* =========================
+       CLEANUP (CRITICAL)
+    ========================= */
 
     return () => {
       cancelled = true;
+      socket.off('alert_created', handleAlert);
       socket.disconnect();
     };
   }, [token]);

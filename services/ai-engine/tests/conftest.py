@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -7,3 +8,7 @@ from pathlib import Path
 SERVICE_ROOT = Path(__file__).resolve().parents[1]
 if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
+
+# Fail-fast env validation in app.main requires an explicit CORS_ORIGIN.
+os.environ.setdefault("CORS_ORIGIN", "https://api.example.com")
+os.environ.setdefault("PORT", "8000")

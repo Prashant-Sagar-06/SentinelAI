@@ -1,6 +1,7 @@
 import { LogEvent } from '../models/LogEvent.js';
 import { MetricsMinute } from '../models/MetricsMinute.js';
 import { safeRedisSet } from '../redisClient.js';
+import { logger } from '../lib/logger.js';
 
 const ONE_MINUTE_MS = 60_000;
 const METRICS_DEBUG = process.env.METRICS_DEBUG === '1' || process.env.METRICS_DEBUG === 'true';
@@ -8,13 +9,11 @@ const ACTIVE_TENANT_LOOKBACK_MINUTES = Number(process.env.METRICS_ACTIVE_TENANT_
 const MIN_HISTORY_TARGET = Number(process.env.MIN_METRICS_HISTORY_FOR_ANOMALY ?? 10);
 
 function logInfo(message, meta) {
-  // eslint-disable-next-line no-console
-  console.log(`[metrics-minute] ${message}`, meta ?? '');
+  logger.info({ component: 'metrics-minute', ...(meta ?? {}) }, message);
 }
 
 function logError(message, meta) {
-  // eslint-disable-next-line no-console
-  console.error(`[metrics-minute] ${message}`, meta ?? '');
+  logger.error({ component: 'metrics-minute', ...(meta ?? {}) }, message);
 }
 
 function floorToUtcMinute(date) {

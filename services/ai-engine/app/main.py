@@ -24,23 +24,52 @@ from .threats import assess_threat
 app = FastAPI(title="SentinelAI AI Engine", version="0.1.0")
 
 
-def _parse_origins() -> list[str]:
-    raw = (
-        os.getenv("CORS_ORIGINS")
-        or os.getenv("CORS_ORIGIN")
-        or ""
-    )
-    parts = [p.strip() for p in raw.split(",") if p.strip()]
-    return parts
+def _require_port() -> int:
+    raw = (os.getenv("PORT") or "").strip()
+    if not raw:
+        raise RuntimeError("Missing required env var: PORT")
+    try:
+        port = int(raw)
+    except ValueError as e:
+        raise RuntimeError("PORT must be an integer") from e
+    if port <= 0 or port > 65535:
+        raise RuntimeError("PORT must be in range 1-65535")
+    return port
 
 
-_cors_origins = _parse_origins()
-_allow_all = ("*" in _cors_origins) or (not _cors_origins)
+_PORT = _require_port()
+
+
+def _require_cors_origin() -> str:
+    raw = (os.getenv("CORS_ORIGIN") or "").strip()
+    if not raw:
+        raise RuntimeError("Missing required env var: CORS_ORIGIN")
+    if raw == "*":
+        raise RuntimeError("CORS_ORIGIN must not be '*'")
+    # Must be an origin only (no path/query).
+    try:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(raw)
+    except Exception as e:
+        raise RuntimeError("CORS_ORIGIN must be a valid URL origin") from e
+
+    if parsed.scheme != "https":
+        raise RuntimeError("CORS_ORIGIN must use https://")
+    if not parsed.netloc:
+        raise RuntimeError("CORS_ORIGIN must include a hostname")
+    if parsed.path not in ("", "/") or parsed.params or parsed.query or parsed.fragment:
+        raise RuntimeError("CORS_ORIGIN must be an origin only (no path/query/hash)")
+
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
+_cors_origin = _require_cors_origin()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"] if _allow_all else _cors_origins,
-    allow_credentials=False if _allow_all else True,
+    allow_origins=[_cors_origin],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -104,7 +133,7 @@ async def request_logging_middleware(request, call_next):
 @app.get("/health")
 def health():
     log.info("health_check", extra={"model_version": MODEL_VERSION})
-    return {"ok": True, "model_version": MODEL_VERSION}
+    return {"status": "ok"}
 
 
 @app.post("/analyze", response_model=AnalyzeResponse)

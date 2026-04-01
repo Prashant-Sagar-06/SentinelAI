@@ -28,3 +28,7 @@ export function notFound(code, message, details) {
 export function tooManyRequests(code, message, details) {
   return new HttpError(429, code, message, details);
 }
+
+export function serviceUnavailable(code, message, details) {
+  return new HttpError(503, code, message, details);
+}

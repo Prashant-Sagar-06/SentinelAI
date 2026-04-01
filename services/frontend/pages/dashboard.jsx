@@ -349,14 +349,49 @@ export default function DashboardPage() {
   }, [token]);
 
   useEffect(() => {
-    if (!token) return undefined;
-    const socket = io(API_BASE, { auth: { token } });
+    if (!token) return;
 
-    socket.on('alert_created', () => {
-      loadAll(token);
+    const socket = io(API_BASE, {
+      auth: { token },
+      transports: ['websocket'], // ✅ force websocket
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 2000,
+      timeout: 5000,
     });
 
+    /* =========================
+       CONNECTION LOGGING
+    ========================= */
+
+    socket.on('connect', () => {
+      console.log('🔌 Socket connected:', socket.id);
+    });
+
+    socket.on('disconnect', (reason) => {
+      console.warn('❌ Socket disconnected:', reason);
+    });
+
+    socket.on('connect_error', (err) => {
+      console.error('❌ Socket connection error:', err.message);
+    });
+
+    /* =========================
+       REALTIME ALERT HANDLER
+    ========================= */
+
+    const handleAlert = () => {
+      loadAll(token);
+    };
+
+    socket.on('alert_created', handleAlert);
+
+    /* =========================
+       CLEANUP (VERY IMPORTANT)
+    ========================= */
+
     return () => {
+      socket.off('alert_created', handleAlert);
       socket.disconnect();
     };
   }, [token]);

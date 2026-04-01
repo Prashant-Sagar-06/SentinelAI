@@ -1,16 +1,15 @@
 import { AnomalyBaseline } from '../models/AnomalyBaseline.js';
 import { safeRedisGet, safeRedisSet } from '../redisClient.js';
+import { logger } from '../lib/logger.js';
 
 const CACHE_TTL_MS = 60_000;
 
 function logInfo(message, meta) {
-  // eslint-disable-next-line no-console
-  console.log(`[baseline] ${message}`, meta ?? '');
+  logger.info({ component: 'baseline', ...(meta ?? {}) }, message);
 }
 
 function logError(message, meta) {
-  // eslint-disable-next-line no-console
-  console.error(`[baseline] ${message}`, meta ?? '');
+  logger.error({ component: 'baseline', ...(meta ?? {}) }, message);
 }
 
 const memCache = new Map();

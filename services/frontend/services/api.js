@@ -41,57 +41,95 @@ async function parseBody(res) {
   return res.text().catch(() => '');
 }
 
-async function requestJson(path, { method = 'GET', token, signal } = {}) {
-  const url = `${getApiBase()}${path.startsWith('/') ? '' : '/'}${path}`;
+/* =========================
+   REQUEST WITH TIMEOUT + RETRY
+========================= */
 
-  let res;
+async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+
   try {
-    res = await fetch(url, {
-      method,
-      signal,
-      headers: buildHeaders({ token }),
+    const res = await fetch(url, {
+      ...options,
+      signal: controller.signal,
     });
-  } catch (cause) {
-    const err = new Error(`Network error while calling ${url}`);
-    err.cause = cause;
-    throw err;
+    return res;
+  } finally {
+    clearTimeout(id);
   }
-
-  const body = await parseBody(res);
-  if (!res.ok) {
-    const msg = (() => {
-      if (typeof body === 'string' && body) return body;
-      if (body && typeof body === 'object') {
-        if (body.error && typeof body.error === 'object') {
-          return String(body.error.message || body.error.code || body.message || `Request failed (${res.status})`);
-        }
-        if (typeof body.error === 'string' && body.error) return body.error;
-        if (typeof body.message === 'string' && body.message) return body.message;
-      }
-      return `Request failed (${res.status})`;
-    })();
-    const err = new Error(msg);
-    err.status = res.status;
-    err.url = url;
-    err.body = body;
-    throw err;
-  }
-
-  if (typeof body !== 'object' || body === null) return {};
-
-  // New canonical API shape: { data: ..., error: null }
-  if ('data' in body && 'error' in body) {
-    return body.data;
-  }
-
-  // Backward-compat: older endpoints returned the payload directly.
-  return body;
 }
 
+async function requestJson(path, { method = 'GET', token, signal, retries = 1 } = {}) {
+  const url = `${getApiBase()}${path.startsWith('/') ? '' : '/'}${path}`;
+
+  let attempt = 0;
+
+  while (true) {
+    try {
+      const res = await fetchWithTimeout(url, {
+        method,
+        headers: buildHeaders({ token }),
+        signal,
+      });
+
+      const body = await parseBody(res);
+
+      if (!res.ok) {
+        const msg = (() => {
+          if (typeof body === 'string' && body) return body;
+          if (body && typeof body === 'object') {
+            if (body.error && typeof body.error === 'object') {
+              return String(
+                body.error.message ||
+                body.error.code ||
+                body.message ||
+                `Request failed (${res.status})`
+              );
+            }
+            if (typeof body.error === 'string') return body.error;
+            if (typeof body.message === 'string') return body.message;
+          }
+          return `Request failed (${res.status})`;
+        })();
+
+        const err = new Error(msg);
+        err.status = res.status;
+        err.url = url;
+        err.body = body;
+        throw err;
+      }
+
+      if (typeof body !== 'object' || body === null) return {};
+
+      if ('data' in body && 'error' in body) {
+        return body.data;
+      }
+
+      return body;
+
+    } catch (err) {
+      const isRetryable =
+        err.name === 'AbortError' ||
+        (err.status >= 500 && err.status < 600);
+
+      if (attempt < retries && isRetryable) {
+        attempt++;
+        continue;
+      }
+
+      const error = new Error(err.message || 'Request failed');
+      error.cause = err;
+      throw error;
+    }
+  }
+}
+
+/* =========================
+   HELPERS
+========================= */
+
 function normalizeLegacyArgs(firstArg, secondArg, idKey) {
-  // Backward compatibility:
-  // - old style: fn({ token, id/anomalyId, signal, limit })
-  // - new style: fn(id, { token, signal, limit }) or fn(undefined, opts)
   if (firstArg && typeof firstArg === 'object' && !Array.isArray(firstArg)) {
     const { token, signal, limit } = firstArg;
     const id = firstArg[idKey];
@@ -110,19 +148,19 @@ function withMeaningfulError(err, fallbackMessage) {
   return new Error(fallbackMessage);
 }
 
-// REQUIRED EXPORTS
+/* =========================
+   API METHODS
+========================= */
 
 export async function getAnomalies(limitOrOptions, maybeOptions) {
   try {
-    // Supported call patterns:
-    // - getAnomalies()                       -> default limit
-    // - getAnomalies(50)                     -> numeric limit
-    // - getAnomalies({ token, limit, signal }) (legacy)
     const opts =
-      limitOrOptions && typeof limitOrOptions === 'object' && !Array.isArray(limitOrOptions)
+      limitOrOptions && typeof limitOrOptions === 'object'
         ? limitOrOptions
         : { ...(maybeOptions || {}), limit: limitOrOptions };
+
     const limit = Number.isFinite(Number(opts.limit)) ? Number(opts.limit) : 20;
+
     return await requestJson(`/api/anomalies?limit=${encodeURIComponent(limit)}`, {
       token: opts.token,
       signal: opts.signal,
@@ -136,7 +174,11 @@ export async function getAnomalyExplanation(idOrOptions, maybeOptions) {
   try {
     const { id, token, signal } = normalizeLegacyArgs(idOrOptions, maybeOptions, 'id');
     if (!id) throw new Error('Missing anomaly id');
-    return await requestJson(`/api/copilot/explain/${encodeURIComponent(id)}`, { token, signal });
+
+    return await requestJson(`/api/copilot/explain/${encodeURIComponent(id)}`, {
+      token,
+      signal,
+    });
   } catch (e) {
     throw withMeaningfulError(e, 'Failed to load anomaly explanation');
   }
@@ -144,9 +186,13 @@ export async function getAnomalyExplanation(idOrOptions, maybeOptions) {
 
 export async function getResponses(anomalyIdOrOptions, maybeOptions) {
   try {
-    const { id: anomalyId, token, signal, limit } = normalizeLegacyArgs(anomalyIdOrOptions, maybeOptions, 'anomalyId');
+    const { id: anomalyId, token, signal, limit } =
+      normalizeLegacyArgs(anomalyIdOrOptions, maybeOptions, 'anomalyId');
+
     if (!anomalyId) throw new Error('Missing anomaly id');
+
     const lim = limit ?? 50;
+
     return await requestJson(
       `/api/responses?anomaly_id=${encodeURIComponent(anomalyId)}&limit=${encodeURIComponent(lim)}`,
       { token, signal }

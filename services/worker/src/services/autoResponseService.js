@@ -1,16 +1,15 @@
 import { Response } from '../models/Response.js';
 import { LogEvent } from '../models/LogEvent.js';
+import { logger } from '../lib/logger.js';
 
 const ONE_MINUTE_MS = 60_000;
 
 function logInfo(message, meta) {
-  // eslint-disable-next-line no-console
-  console.log(`[auto-response] ${message}`, meta ?? '');
+  logger.info({ component: 'auto-response', ...(meta ?? {}) }, message);
 }
 
 function logError(message, meta) {
-  // eslint-disable-next-line no-console
-  console.error(`[auto-response] ${message}`, meta ?? '');
+  logger.error({ component: 'auto-response', ...(meta ?? {}) }, message);
 }
 
 function floorToMinute(d) {

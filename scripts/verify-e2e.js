@@ -16,14 +16,27 @@ Env overrides:
   POLL_INTERVAL_MS=500
 */
 
-const API_BASE = process.env.API_BASE || '';
+const API_BASE = String(process.env.API_BASE ?? '').trim();
 if (!API_BASE) {
   throw new Error('Missing API_BASE. Set API_BASE=https://your-backend-url');
 }
-const DEFAULT_EMAIL = process.env.EMAIL || '';
-const PASSWORD = process.env.PASSWORD || 'password123';
-const TIMEOUT_MS = Number(process.env.TIMEOUT_MS || 20_000);
-const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS || 500);
+const DEFAULT_EMAIL = String(process.env.EMAIL ?? '').trim();
+const PASSWORD = String(process.env.PASSWORD ?? '').trim();
+if (!PASSWORD) {
+  throw new Error('Missing PASSWORD. Set PASSWORD=your-password');
+}
+
+const TIMEOUT_MS = Number(String(process.env.TIMEOUT_MS ?? '').trim());
+if (!Number.isFinite(TIMEOUT_MS) || TIMEOUT_MS <= 0) {
+  throw new Error('Missing/invalid TIMEOUT_MS. Set TIMEOUT_MS to a positive number (ms)');
+}
+
+const POLL_INTERVAL_MS = Number(String(process.env.POLL_INTERVAL_MS ?? '').trim());
+if (!Number.isFinite(POLL_INTERVAL_MS) || POLL_INTERVAL_MS <= 0) {
+  throw new Error('Missing/invalid POLL_INTERVAL_MS. Set POLL_INTERVAL_MS to a positive number (ms)');
+}
+
+const REQUEST_TIMEOUT_MS = Math.min(10_000, TIMEOUT_MS);
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -45,11 +58,20 @@ async function requestJson(path, { method = 'GET', token, body } = {}) {
   if (body !== undefined) headers['content-type'] = 'application/json';
   if (token) headers.authorization = `Bearer ${token}`;
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    method,
-    headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  let res;
+  try {
+    res = await fetch(`${API_BASE}${path}` , {
+      method,
+      headers,
+      signal: controller.signal,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  } finally {
+    clearTimeout(t);
+  }
 
   const raw = await readJson(res);
 

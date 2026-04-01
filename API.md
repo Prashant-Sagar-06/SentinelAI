@@ -1,6 +1,6 @@
 # SentinelAI API
 
-Base URL (local docker-compose): `http://localhost:4000`
+Base URL: `https://api.domain.com`
 
 ## Authentication
 

@@ -1,6 +1,7 @@
 import Redis from 'ioredis';
 
 import { config } from './config.js';
+import { logger } from './lib/logger.js';
 
 let client = null;
 let clientInitError = null;
@@ -20,15 +21,13 @@ export function getRedisClient() {
     });
 
     client.on('error', (err) => {
-      // eslint-disable-next-line no-console
-      console.error('[redis] client error', { message: err?.message });
+      logger.error({ err }, 'redis_client_error');
     });
 
     return client;
   } catch (e) {
     clientInitError = e;
-    // eslint-disable-next-line no-console
-    console.error('[redis] client init failed', { message: e?.message });
+    logger.error({ err: e }, 'redis_client_init_failed');
     return null;
   }
 }
@@ -39,8 +38,7 @@ export async function safeRedisGet(key) {
   try {
     return await c.get(key);
   } catch (e) {
-    // eslint-disable-next-line no-console
-    console.error('[redis] GET failed', { key, message: e?.message });
+    logger.error({ err: e, key }, 'redis_get_failed');
     return null;
   }
 }
@@ -57,8 +55,7 @@ export async function safeRedisSet(key, value, { ttlSeconds } = {}) {
     }
     return true;
   } catch (e) {
-    // eslint-disable-next-line no-console
-    console.error('[redis] SET failed', { key, message: e?.message });
+    logger.error({ err: e, key }, 'redis_set_failed');
     return false;
   }
 }

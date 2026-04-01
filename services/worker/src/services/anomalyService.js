@@ -6,6 +6,7 @@ import { config } from '../config.js';
 import { getBaseline, setBaseline, BASELINE_KEYS } from './baselineService.js';
 import { safeRedisGet, safeRedisSet } from '../redisClient.js';
 import { handleAutoResponse } from './autoResponseService.js';
+import { logger } from '../lib/logger.js';
 
 const ONE_MINUTE_MS = 60_000;
 const WINDOW_MINUTES = 15;
@@ -26,13 +27,11 @@ async function getActiveUserIds({ now = new Date() } = {}) {
 }
 
 function logInfo(message, meta) {
-  // eslint-disable-next-line no-console
-  console.log(`[anomaly-engine] ${message}`, meta ?? '');
+  logger.info({ component: 'anomaly-engine', ...(meta ?? {}) }, message);
 }
 
 function logError(message, meta) {
-  // eslint-disable-next-line no-console
-  console.error(`[anomaly-engine] ${message}`, meta ?? '');
+  logger.error({ component: 'anomaly-engine', ...(meta ?? {}) }, message);
 }
 
 function clamp01(x) {

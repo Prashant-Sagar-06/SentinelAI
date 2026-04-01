@@ -1,6 +1,7 @@
 import http from 'http';
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 
 import { config, requireEnv } from './config.js';
 import { connectMongo } from './db.js';
@@ -34,7 +35,13 @@ import { Incident } from './models/Incident.js';
 
 // -------------------- INIT --------------------
 requireEnv();
-await connectMongo();
+
+try {
+  await connectMongo();
+} catch (err) {
+  console.error('❌ MongoDB connection failed:', err);
+  process.exit(1);
+}
 
 // Ensure indexes
 await Promise.allSettled([
@@ -51,29 +58,46 @@ const analysisQueue = createAnalysisQueue();
 
 // -------------------- APP --------------------
 const app = express();
+
 app.set('trust proxy', config.trustProxy);
 app.set('analysisQueue', analysisQueue);
+
+app.disable('x-powered-by');
+
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+  })
+);
 
 app.use(httpLogger);
 app.use(express.json({ limit: '2mb' }));
 
+// -------------------- REQUEST TIMEOUT --------------------
+app.use((req, res, next) => {
+  res.setTimeout(10_000, () => {
+    if (res.headersSent) return;
+    return res.status(408).send('Request Timeout');
+  });
+  next();
+});
+
+// -------------------- CORS --------------------
 app.use(
   cors({
     origin: (origin, cb) => {
       if (!origin) return cb(null, true);
-      const allowed =
-        config.corsOrigins.includes('*') ||
-        config.corsOrigins.includes(origin);
+      const allowed = origin === config.corsOrigin;
       return cb(allowed ? null : new Error('CORS origin not allowed'), allowed);
     },
-    credentials: true, // ✅ FIXED
+    credentials: true,
   })
 );
 
 // -------------------- HEALTH --------------------
 app.use(healthRouter);
 
-// -------------------- ROOT DEBUG --------------------
+// -------------------- ROOT --------------------
 app.get('/', (req, res) => {
   return ok(res, { status: 'SentinelAI backend running' });
 });
@@ -83,18 +107,14 @@ app.use(apiLimiter);
 
 // -------------------- INTERNAL --------------------
 app.post('/internal/broadcast/alert', async (req, res) => {
-  const secret = config.internalBroadcastSecret;
-
-  if (!secret) {
-    return fail(res, { status: 503, code: 'internal_broadcast_disabled', message: 'Internal broadcast disabled' });
-  }
-
   const provided = String(req.header('x-internal-secret') ?? '');
-  if (provided !== secret) {
+
+  if (provided !== config.internalBroadcastSecret) {
     return fail(res, { status: 401, code: 'unauthorized', message: 'Unauthorized' });
   }
 
   const alert = req.body;
+
   if (!alert || typeof alert !== 'object') {
     return fail(res, { status: 400, code: 'invalid_body', message: 'Invalid body' });
   }
@@ -106,13 +126,11 @@ app.post('/internal/broadcast/alert', async (req, res) => {
 // -------------------- AUTH --------------------
 app.use('/api/auth', authRouter);
 
-// -------------------- PROTECTED ROUTES --------------------
+// -------------------- PROTECTED --------------------
 app.use('/api', requireAuth);
 
-// ✅ FIXED (no queue param)
+// -------------------- ROUTES --------------------
 app.use('/api/logs', createLogsRouter());
-
-// -------------------- CORE ROUTES --------------------
 app.use('/api/alerts', alertsRouter);
 app.use('/api/anomalies', anomaliesRouter);
 app.use('/api/incidents', incidentsRouter);
@@ -127,6 +145,7 @@ app.use(errorHandler);
 
 // -------------------- SERVER --------------------
 const server = http.createServer(app);
+
 initSocket(server);
 
 server.listen(config.port, '0.0.0.0', () => {
@@ -134,4 +153,34 @@ server.listen(config.port, '0.0.0.0', () => {
     { port: config.port, env: config.nodeEnv },
     'backend-api listening'
   );
+});
+
+// -------------------- GRACEFUL SHUTDOWN --------------------
+async function shutdown(signal) {
+  logger.info({ signal }, 'shutdown_start');
+
+  try {
+    await analysisQueue.close();
+    server.close(() => {
+      logger.info('http server closed');
+    });
+  } catch (err) {
+    logger.error({ err }, 'shutdown_error');
+  }
+
+  process.exit(0);
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+
+// -------------------- GLOBAL ERROR HANDLING --------------------
+process.on('uncaughtException', (err) => {
+  console.error('❌ Uncaught Exception:', err);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (err) => {
+  console.error('❌ Unhandled Rejection:', err);
+  process.exit(1);
 });

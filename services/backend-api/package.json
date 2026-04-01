@@ -4,7 +4,7 @@
   "main": "src/index.js",
   "type": "module",
   "scripts": {
-    "start": "node src/index.js",
+    "start": "node server.js",
     "test": "node --test"
   },
   "dependencies": {
@@ -14,14 +14,13 @@
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "express-rate-limit": "^7.4.0",
+    "helmet": "^7.1.0",
     "ioredis": "^5.5.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.5.2",
     "nanoid": "^5.0.7",
-    "pino": "^9.4.0",
-    "pino-http": "^10.3.0",
-    "pino-pretty": "^11.2.2",
     "socket.io": "^4.7.5",
+    "winston": "^3.17.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {

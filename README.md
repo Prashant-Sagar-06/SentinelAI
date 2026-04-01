@@ -12,18 +12,16 @@ AI-powered security intelligence & threat detection platform.
 
 1. Copy env template:
    - `copy .env.example .env`
-2. Start everything:
-   - `docker compose up --build`
-3. URLs:
-   - Backend API: http://localhost:4000
-   - AI Engine: http://localhost:8000
-   - Frontend: http://localhost:3000
+2. Deploy services (production):
+   - Frontend (Vercel): https://app.domain.com
+   - Backend API (Render/Railway): https://api.domain.com
+   - AI Engine: https://ai.domain.com
 
 ## End-to-End Verification
 
-With the stack running (`docker compose up --build`), run:
+With the deployed stack running, run:
 
-- `node scripts/verify-e2e.js`
+- `node scripts/verify-e2e.js` (requires `API_BASE=https://api.domain.com`)
 
 Or via npm:
 

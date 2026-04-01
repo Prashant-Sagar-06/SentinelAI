@@ -18,7 +18,8 @@ services:
       context: ./services/ai-engine
     container_name: sentinelai-ai-engine
     environment:
-      - MONGO_URL=${MONGO_URL}
+      - PORT=8000
+      - CORS_ORIGIN=${CORS_ORIGIN}
     ports:
       - "8000:8000"
     depends_on:
@@ -30,7 +31,7 @@ services:
     container_name: sentinelai-backend
     environment:
       - NODE_ENV=production
-      - BACKEND_PORT=${BACKEND_PORT}
+      - PORT=4000
       - MONGO_URL=${MONGO_URL}
       - REDIS_URL=${REDIS_URL}
       - JWT_SECRET=${JWT_SECRET}
@@ -42,7 +43,7 @@ services:
       - COPILOT_RATE_LIMIT_PER_MINUTE=${COPILOT_RATE_LIMIT_PER_MINUTE}
       - INTERNAL_BROADCAST_SECRET=${INTERNAL_BROADCAST_SECRET}
     ports:
-      - "${BACKEND_PORT}:4000"
+      - "4000:4000"
     depends_on:
       - mongo
       - redis

@@ -1,5 +1,6 @@
 import { LogEvent } from '../models/LogEvent.js';
 import { Alert } from '../models/Alert.js';
+import { logger } from './logger.js';
 
 const DEFAULT_WINDOW_MS = 60_000;
 const DEFAULT_TICK_MS = 10_000;
@@ -14,13 +15,11 @@ async function getActiveUserIds({ now = new Date(), windowMs = DEFAULT_WINDOW_MS
 }
 
 function logInfo(message, meta) {
-  // eslint-disable-next-line no-console
-  console.log(`[alert-engine] ${message}`, meta ?? '');
+  logger.info({ component: 'alert-engine', ...(meta ?? {}) }, message);
 }
 
 function logError(message, meta) {
-  // eslint-disable-next-line no-console
-  console.error(`[alert-engine] ${message}`, meta ?? '');
+  logger.error({ component: 'alert-engine', ...(meta ?? {}) }, message);
 }
 
 function computeWindowStart(date, windowMs) {
