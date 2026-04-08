@@ -4,9 +4,10 @@
   "main": "src/index.js",
   "type": "module",
   "scripts": {
-    "start": "node server.js",
-    "test": "node --test"
-  },
+  "dev": "node --watch src/index.js",
+  "start": "node src/index.js",
+  "test": "node --test"
+},
   "dependencies": {
     "bcrypt": "^6.0.0",
     "bullmq": "^5.22.0",
@@ -20,7 +21,7 @@
     "mongoose": "^8.5.2",
     "nanoid": "^5.0.7",
     "socket.io": "^4.7.5",
-    "winston": "^3.17.0",
+    "winston": "^3.19.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {

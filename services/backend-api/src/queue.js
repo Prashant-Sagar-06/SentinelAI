@@ -5,13 +5,16 @@ import { config } from './config.js';
 export const analysisQueueName = 'analysis-jobs';
 
 export function createAnalysisQueue() {
-  const connection = new Redis(config.redisUrl, {
-    maxRetriesPerRequest: null,
-    enableReadyCheck: true,
-    lazyConnect: false,
-    enableOfflineQueue: false,
-    connectTimeout: 5000,
-  });
+const connection = new Redis(config.redisUrl, {
+  maxRetriesPerRequest: null,
+  enableReadyCheck: true,
+  lazyConnect: false,
+  enableOfflineQueue: true, // 🔥 IMPORTANT CHANGE
+  connectTimeout: 10000,
+});
+connection.on('ready', () => {
+  console.log('🔥 Redis READY');
+});
 
   /* =========================
      REDIS RUNTIME HARDENING

@@ -85,20 +85,24 @@ function parseAtlasMongoUrl(raw) {
   return s;
 }
 
-function parseRedisTlsUrl(raw) {
+function parseRedisUrl(raw) {
   const s = String(raw);
-  if (!s.startsWith('rediss://')) {
-    throw new Error('REDIS_URL must use TLS (rediss://...)');
-  }
+
   let u;
   try {
     u = new URL(s);
   } catch {
     throw new Error('REDIS_URL must be a valid URL');
   }
+
+  if (!['redis:', 'rediss:'].includes(u.protocol)) {
+    throw new Error('REDIS_URL must start with redis:// or rediss://');
+  }
+
   if (isLocalOrPrivateHost(u.hostname)) {
     throw new Error('REDIS_URL must point to a public host');
   }
+
   return s;
 }
 
@@ -147,7 +151,7 @@ function loadEnv() {
     logTtlSeconds: env.LOG_TTL_SECONDS ? Number(env.LOG_TTL_SECONDS) : 86_400,
     metricsTtlSeconds: env.METRICS_TTL_SECONDS ? Number(env.METRICS_TTL_SECONDS) : 604_800,
     mongoUrl: parseAtlasMongoUrl(env.MONGO_URL),
-    redisUrl: parseRedisTlsUrl(env.REDIS_URL),
+    redisUrl: parseRedisUrl(env.REDIS_URL),
     jwtSecret: env.JWT_SECRET,
     corsOrigin: parseOrigin('CORS_ORIGIN', env.CORS_ORIGIN),
     rateLimitPerMinute: env.RATE_LIMIT_PER_MINUTE ? Number(env.RATE_LIMIT_PER_MINUTE) : 120,
