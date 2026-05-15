@@ -8,8 +8,8 @@ export default function Register() {
   const [password, setPassword] = useState('')
   const [error,    setError]    = useState('')
   const [loading,  setLoading]  = useState(false)
-  const { signin }  = useAuth()
-  const navigate    = useNavigate()
+  const { signin } = useAuth()
+  const navigate   = useNavigate()
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -28,35 +28,58 @@ export default function Register() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-950">
-      <div className="w-full max-w-sm bg-gray-900 border border-gray-800 rounded-2xl p-8">
-        <h1 className="text-2xl font-bold mb-1">⚡ Sentinel AI</h1>
-        <p className="text-gray-400 text-sm mb-6">Create your account</p>
+    <div style={{ minHeight: '100vh', background: 'var(--bg-base)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden' }}>
+      <div style={{ position: 'absolute', inset: 0, backgroundImage: 'linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px)', backgroundSize: '48px 48px', opacity: 0.4 }} />
+      <div style={{ position: 'absolute', top: '20%', left: '50%', transform: 'translateX(-50%)', width: '400px', height: '400px', background: 'radial-gradient(circle, rgba(0,212,255,0.08) 0%, transparent 70%)', pointerEvents: 'none' }} />
 
-        {error && <p className="text-red-400 text-sm mb-4 bg-red-950 px-3 py-2 rounded-lg">{error}</p>}
+      <div style={{ position: 'relative', width: '100%', maxWidth: '400px', padding: '0 20px' }} className="fade-up">
+        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '48px', height: '48px', background: 'linear-gradient(135deg, var(--accent), var(--accent-dim))', borderRadius: '12px', marginBottom: '16px', boxShadow: '0 0 32px var(--accent-glow)' }}>
+            <span style={{ fontFamily: 'var(--mono)', fontWeight: '700', fontSize: '20px', color: '#000' }}>S</span>
+          </div>
+          <h1 style={{ fontFamily: 'var(--sans)', fontWeight: '800', fontSize: '24px', color: 'var(--text-1)', margin: '0 0 4px', letterSpacing: '-0.03em' }}>
+            Sentinel<span style={{ color: 'var(--accent)' }}>AI</span>
+          </h1>
+          <p style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text-3)', margin: 0 }}>INFRASTRUCTURE MONITORING</p>
+        </div>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <input
-            type="email" placeholder="Email" required
-            value={email} onChange={e => setEmail(e.target.value)}
-            className="bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-brand-500"
-          />
-          <input
-            type="password" placeholder="Password" required minLength={8}
-            value={password} onChange={e => setPassword(e.target.value)}
-            className="bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-brand-500"
-          />
-          <button
-            type="submit" disabled={loading}
-            className="bg-brand-500 hover:bg-brand-600 text-white font-medium py-2.5 rounded-lg text-sm transition-colors disabled:opacity-50"
-          >
-            {loading ? 'Creating account...' : 'Create account'}
-          </button>
-        </form>
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '16px', padding: '32px', position: 'relative', overflow: 'hidden' }}>
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: 'linear-gradient(90deg, transparent, var(--green), transparent)' }} />
 
-        <p className="text-gray-500 text-sm mt-4 text-center">
-          Have an account? <Link to="/login" className="text-brand-500 hover:underline">Sign in</Link>
-        </p>
+          <h2 style={{ fontFamily: 'var(--sans)', fontWeight: '700', fontSize: '16px', color: 'var(--text-1)', margin: '0 0 6px' }}>Create account</h2>
+          <p style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text-3)', margin: '0 0 24px' }}>Start monitoring your infrastructure</p>
+
+          {error && (
+            <div style={{ background: 'rgba(255,68,68,0.08)', border: '1px solid rgba(255,68,68,0.3)', borderRadius: '8px', padding: '10px 14px', marginBottom: '20px', fontFamily: 'var(--mono)', fontSize: '12px', color: 'var(--red)' }}>
+              ⚠ {error}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            {[
+              { label: 'Email', type: 'email', val: email, set: setEmail, placeholder: 'you@example.com' },
+              { label: 'Password', type: 'password', val: password, set: setPassword, placeholder: 'min 8 characters' },
+            ].map(({ label, type, val, set, placeholder }) => (
+              <div key={label}>
+                <label style={{ fontFamily: 'var(--mono)', fontSize: '10px', fontWeight: '700', color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.08em', display: 'block', marginBottom: '6px' }}>{label}</label>
+                <input type={type} value={val} onChange={e => set(e.target.value)} placeholder={placeholder} required minLength={type === 'password' ? 8 : undefined}
+                  style={{ width: '100%', background: 'var(--bg-base)', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 14px', fontFamily: 'var(--mono)', fontSize: '13px', color: 'var(--text-1)', outline: 'none', transition: 'border-color 0.15s' }}
+                  onFocus={e => e.target.style.borderColor = 'var(--accent)'}
+                  onBlur={e => e.target.style.borderColor = 'var(--border)'}
+                />
+              </div>
+            ))}
+
+            <button type="submit" disabled={loading} style={{ background: 'var(--accent)', color: '#000', border: 'none', borderRadius: '8px', padding: '12px', fontFamily: 'var(--sans)', fontSize: '13px', fontWeight: '700', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1, letterSpacing: '0.04em', boxShadow: '0 0 20px var(--accent-glow)', marginTop: '4px', transition: 'opacity 0.15s' }}>
+              {loading ? 'CREATING...' : 'CREATE ACCOUNT →'}
+            </button>
+          </form>
+
+          <p style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text-3)', textAlign: 'center', marginTop: '20px', marginBottom: 0 }}>
+            Have an account?{' '}
+            <Link to="/login" style={{ color: 'var(--accent)', textDecoration: 'none' }}>Sign in</Link>
+          </p>
+        </div>
       </div>
     </div>
   )

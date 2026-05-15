@@ -1,22 +1,17 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getIncident, resolveIncident, analyzeIncident } from '../lib/api'
-import { ArrowLeft, Sparkles, CheckCircle } from 'lucide-react'
 
 export default function IncidentDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
-
   const [incident,  setIncident]  = useState(null)
   const [loading,   setLoading]   = useState(true)
   const [analyzing, setAnalyzing] = useState(false)
   const [resolving, setResolving] = useState(false)
 
   useEffect(() => {
-    getIncident(id)
-      .then(res => setIncident(res.data))
-      .catch(() => navigate('/incidents'))
-      .finally(() => setLoading(false))
+    getIncident(id).then(res => setIncident(res.data)).catch(() => navigate('/incidents')).finally(() => setLoading(false))
   }, [id])
 
   const handleAnalyze = async () => {
@@ -24,11 +19,8 @@ export default function IncidentDetail() {
     try {
       const res = await analyzeIncident(id)
       setIncident(prev => ({ ...prev, ai_analysis: res.data.result }))
-    } catch (err) {
-      alert('AI analysis failed. Check your Grok API key.')
-    } finally {
-      setAnalyzing(false)
-    }
+    } catch { alert('AI analysis failed. Check your Groq API key.') }
+    finally { setAnalyzing(false) }
   }
 
   const handleResolve = async () => {
@@ -36,92 +28,85 @@ export default function IncidentDetail() {
     try {
       const res = await resolveIncident(id, 'Manually resolved from dashboard')
       setIncident(res.data)
-    } catch (err) {
-      alert('Failed to resolve incident')
-    } finally {
-      setResolving(false)
-    }
+    } catch { alert('Failed to resolve') }
+    finally { setResolving(false) }
   }
 
-  if (loading) return <div className="flex-1 p-8 text-gray-500">Loading...</div>
+  if (loading) return <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--mono)', fontSize: '12px', color: 'var(--text-3)' }}>LOADING<span className="blink">_</span></div>
   if (!incident) return null
 
-  return (
-    <div className="flex-1 p-8 overflow-y-auto max-w-3xl">
-      <button
-        onClick={() => navigate('/incidents')}
-        className="flex items-center gap-2 text-gray-400 hover:text-white text-sm mb-6 transition-colors"
-      >
-        <ArrowLeft size={16} /> Back to Incidents
-      </button>
+  const isOpen = incident.status === 'open'
 
-      {/* Header */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 mb-4">
-        <div className="flex items-start justify-between gap-4 mb-4">
-          <h2 className="text-lg font-bold">{incident.title}</h2>
-          <span className={`text-xs px-2 py-1 rounded-full font-medium shrink-0
-            ${incident.status === 'open' ? 'text-red-400 bg-red-950' : 'text-green-400 bg-green-950'}`}>
-            {incident.status}
+  return (
+    <div style={{ flex: 1, padding: '32px', overflowY: 'auto', background: 'var(--bg-base)', maxWidth: '800px' }}>
+
+      <button onClick={() => navigate('/incidents')} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: 'none', color: 'var(--text-3)', fontFamily: 'var(--mono)', fontSize: '11px', cursor: 'pointer', marginBottom: '24px', padding: 0, transition: 'color 0.15s' }}
+        onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'}
+        onMouseLeave={e => e.currentTarget.style.color = 'var(--text-3)'}
+      >‹ BACK TO INCIDENTS</button>
+
+      {/* Header card */}
+      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '24px', marginBottom: '12px', position: 'relative', overflow: 'hidden' }} className="fade-up">
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: `linear-gradient(90deg, transparent, ${isOpen ? 'var(--red)' : 'var(--green)'}, transparent)` }} />
+
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px', marginBottom: '20px' }}>
+          <h2 style={{ fontFamily: 'var(--sans)', fontWeight: '700', fontSize: '18px', color: 'var(--text-1)', margin: 0, letterSpacing: '-0.02em' }}>{incident.title}</h2>
+          <span style={{ fontFamily: 'var(--mono)', fontSize: '10px', fontWeight: '700', color: isOpen ? 'var(--red)' : 'var(--green)', background: isOpen ? 'rgba(255,68,68,0.08)' : 'rgba(0,255,136,0.08)', border: `1px solid ${isOpen ? 'rgba(255,68,68,0.3)' : 'rgba(0,255,136,0.3)'}`, padding: '4px 10px', borderRadius: '4px', whiteSpace: 'nowrap', letterSpacing: '0.06em' }}>
+            {incident.status.toUpperCase()}
           </span>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 text-sm">
-          <div>
-            <p className="text-gray-500 text-xs">Server</p>
-            <p className="text-gray-200">{incident.server_name}</p>
-          </div>
-          <div>
-            <p className="text-gray-500 text-xs">Detected at</p>
-            <p className="text-gray-200">{new Date(incident.created_at).toLocaleString()}</p>
-          </div>
-          {incident.resolved_at && (
-            <div>
-              <p className="text-gray-500 text-xs">Resolved at</p>
-              <p className="text-gray-200">{new Date(incident.resolved_at).toLocaleString()}</p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+          {[
+            { label: 'Server', value: incident.server_name },
+            { label: 'Detected', value: new Date(incident.created_at).toLocaleString() },
+            incident.resolved_at && { label: 'Resolved', value: new Date(incident.resolved_at).toLocaleString() },
+          ].filter(Boolean).map(({ label, value }) => (
+            <div key={label} style={{ background: 'var(--bg-base)', borderRadius: '8px', padding: '12px 14px' }}>
+              <p style={{ fontFamily: 'var(--mono)', fontSize: '10px', color: 'var(--text-3)', margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</p>
+              <p style={{ fontFamily: 'var(--mono)', fontSize: '13px', color: 'var(--text-1)', margin: 0 }}>{value}</p>
             </div>
-          )}
+          ))}
         </div>
 
         {incident.description && (
-          <div className="mt-4 p-3 bg-gray-800 rounded-lg">
-            <p className="text-gray-400 text-xs mb-1">Description</p>
-            <p className="text-gray-200 text-sm">{incident.description}</p>
+          <div style={{ background: 'var(--bg-base)', borderRadius: '8px', padding: '12px 14px', marginTop: '12px' }}>
+            <p style={{ fontFamily: 'var(--mono)', fontSize: '10px', color: 'var(--text-3)', margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Description</p>
+            <p style={{ fontFamily: 'var(--mono)', fontSize: '13px', color: 'var(--text-2)', margin: 0, lineHeight: 1.6 }}>{incident.description}</p>
           </div>
         )}
       </div>
 
       {/* AI Analysis */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 mb-4">
-        <div className="flex items-center justify-between mb-4">
-          <p className="font-medium flex items-center gap-2">
-            <Sparkles size={16} className="text-brand-500" /> AI Root Cause Analysis
-          </p>
+      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '24px', marginBottom: '12px', position: 'relative', overflow: 'hidden' }} className="fade-up-1">
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: 'linear-gradient(90deg, transparent, var(--accent), transparent)' }} />
+
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+          <div>
+            <p style={{ fontFamily: 'var(--sans)', fontWeight: '600', fontSize: '14px', color: 'var(--text-1)', margin: '0 0 2px' }}>◈ AI Root Cause Analysis</p>
+            <p style={{ fontFamily: 'var(--mono)', fontSize: '10px', color: 'var(--text-3)', margin: 0 }}>POWERED BY GROQ</p>
+          </div>
           {!incident.ai_analysis && (
-            <button
-              onClick={handleAnalyze}
-              disabled={analyzing}
-              className="bg-brand-500 hover:bg-brand-600 text-white text-sm px-4 py-1.5 rounded-lg transition-colors disabled:opacity-50"
-            >
-              {analyzing ? 'Analyzing...' : 'Analyze'}
+            <button onClick={handleAnalyze} disabled={analyzing} style={{ background: 'var(--accent-glow)', border: '1px solid var(--border-lit)', color: 'var(--accent)', borderRadius: '8px', padding: '8px 16px', fontFamily: 'var(--mono)', fontSize: '11px', fontWeight: '700', cursor: analyzing ? 'not-allowed' : 'pointer', opacity: analyzing ? 0.6 : 1, letterSpacing: '0.06em', transition: 'all 0.15s' }}>
+              {analyzing ? 'ANALYZING...' : 'RUN ANALYSIS →'}
             </button>
           )}
         </div>
 
         {incident.ai_analysis
-          ? <p className="text-gray-300 text-sm leading-relaxed whitespace-pre-wrap">{incident.ai_analysis}</p>
-          : <p className="text-gray-600 text-sm">Click Analyze to get AI-powered root cause analysis.</p>
+          ? <p style={{ fontFamily: 'var(--mono)', fontSize: '13px', color: 'var(--text-2)', lineHeight: 1.8, margin: 0, whiteSpace: 'pre-wrap' }}>{incident.ai_analysis}</p>
+          : <p style={{ fontFamily: 'var(--mono)', fontSize: '12px', color: 'var(--text-3)', margin: 0 }}>Click Run Analysis to get AI-powered root cause analysis from Groq.</p>
         }
       </div>
 
       {/* Resolve */}
-      {incident.status === 'open' && (
-        <button
-          onClick={handleResolve}
-          disabled={resolving}
-          className="flex items-center gap-2 bg-green-800 hover:bg-green-700 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+      {isOpen && (
+        <button onClick={handleResolve} disabled={resolving} className="fade-up-2"
+          style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.3)', color: 'var(--green)', borderRadius: '10px', padding: '12px 20px', fontFamily: 'var(--mono)', fontSize: '12px', fontWeight: '700', cursor: resolving ? 'not-allowed' : 'pointer', opacity: resolving ? 0.6 : 1, letterSpacing: '0.06em', transition: 'all 0.15s' }}
+          onMouseEnter={e => { if (!resolving) e.currentTarget.style.background = 'rgba(0,255,136,0.14)' }}
+          onMouseLeave={e => e.currentTarget.style.background = 'rgba(0,255,136,0.08)'}
         >
-          <CheckCircle size={16} />
-          {resolving ? 'Resolving...' : 'Mark as Resolved'}
+          ✓ {resolving ? 'RESOLVING...' : 'MARK AS RESOLVED'}
         </button>
       )}
     </div>

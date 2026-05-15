@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { getAPIKeys, createAPIKey } from '../lib/api'
-import { Key, Copy, Plus, Check } from 'lucide-react'
 
 export default function APIKeys() {
   const [keys,    setKeys]    = useState([])
@@ -8,9 +7,7 @@ export default function APIKeys() {
   const [loading, setLoading] = useState(false)
   const [copied,  setCopied]  = useState(null)
 
-  useEffect(() => {
-    getAPIKeys().then(res => setKeys(res.data)).catch(() => {})
-  }, [])
+  useEffect(() => { getAPIKeys().then(res => setKeys(res.data)).catch(() => {}) }, [])
 
   const handleCreate = async () => {
     if (!name.trim()) return
@@ -19,11 +16,8 @@ export default function APIKeys() {
       const res = await createAPIKey(name.trim())
       setKeys(prev => [...prev, res.data])
       setName('')
-    } catch {
-      alert('Failed to create API key')
-    } finally {
-      setLoading(false)
-    }
+    } catch { alert('Failed to create API key') }
+    finally { setLoading(false) }
   }
 
   const copyKey = (key) => {
@@ -33,55 +27,57 @@ export default function APIKeys() {
   }
 
   return (
-    <div className="flex-1 p-8 overflow-y-auto max-w-2xl">
-      <h2 className="text-xl font-bold mb-2">API Keys</h2>
-      <p className="text-gray-400 text-sm mb-6">
-        Use these keys in your agent. Set <code className="bg-gray-800 px-1 rounded text-xs">SENTINEL_API_KEY</code> on your server.
-      </p>
+    <div style={{ flex: 1, padding: '32px', overflowY: 'auto', background: 'var(--bg-base)', maxWidth: '760px' }}>
+
+      {/* Header */}
+      <div style={{ marginBottom: '28px' }}>
+        <h1 style={{ fontFamily: 'var(--sans)', fontWeight: '800', fontSize: '22px', color: 'var(--text-1)', margin: '0 0 4px', letterSpacing: '-0.02em' }}>◎ API Keys</h1>
+        <p style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text-3)', margin: 0 }}>AUTHENTICATE YOUR AGENTS</p>
+      </div>
 
       {/* Create new key */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 mb-6">
-        <p className="text-sm font-medium mb-3">Create new key</p>
-        <div className="flex gap-3">
-          <input
-            value={name}
-            onChange={e => setName(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleCreate()}
-            placeholder="Key name (e.g. prod-server-1)"
-            className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500"
+      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '24px', marginBottom: '12px', position: 'relative', overflow: 'hidden' }} className="fade-up">
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: 'linear-gradient(90deg, transparent, var(--accent), transparent)' }} />
+        <p style={{ fontFamily: 'var(--sans)', fontWeight: '600', fontSize: '13px', color: 'var(--text-1)', margin: '0 0 14px' }}>Generate New Key</p>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <input value={name} onChange={e => setName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleCreate()}
+            placeholder="key name (e.g. prod-server-1)"
+            style={{ flex: 1, background: 'var(--bg-base)', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 14px', fontFamily: 'var(--mono)', fontSize: '12px', color: 'var(--text-1)', outline: 'none', transition: 'border-color 0.15s' }}
+            onFocus={e => e.target.style.borderColor = 'var(--accent)'}
+            onBlur={e => e.target.style.borderColor = 'var(--border)'}
           />
-          <button
-            onClick={handleCreate}
-            disabled={loading || !name.trim()}
-            className="flex items-center gap-2 bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 rounded-lg text-sm transition-colors disabled:opacity-50"
-          >
-            <Plus size={16} /> Create
+          <button onClick={handleCreate} disabled={loading || !name.trim()}
+            style={{ background: 'var(--accent)', color: '#000', border: 'none', borderRadius: '8px', padding: '10px 20px', fontFamily: 'var(--mono)', fontSize: '11px', fontWeight: '700', cursor: (loading || !name.trim()) ? 'not-allowed' : 'pointer', opacity: (loading || !name.trim()) ? 0.5 : 1, letterSpacing: '0.06em', boxShadow: '0 0 16px var(--accent-glow)', transition: 'opacity 0.15s', whiteSpace: 'nowrap' }}>
+            {loading ? 'CREATING...' : '+ CREATE'}
           </button>
         </div>
       </div>
 
-      {/* Key list */}
-      <div className="flex flex-col gap-3">
+      {/* Keys list */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '24px' }}>
         {keys.length === 0 && (
-          <p className="text-gray-600 text-sm">No API keys yet. Create one above.</p>
+          <div style={{ textAlign: 'center', padding: '40px', fontFamily: 'var(--mono)', fontSize: '12px', color: 'var(--text-3)' }}>
+            NO KEYS YET — CREATE ONE ABOVE
+          </div>
         )}
-        {keys.map(k => (
-          <div key={k.id} className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3 min-w-0">
-              <Key size={16} className="text-brand-500 shrink-0" />
-              <div className="min-w-0">
-                <p className="text-sm font-medium">{k.name}</p>
-                <p className="text-gray-600 text-xs font-mono truncate">{k.key}</p>
+        {keys.map((k, i) => (
+          <div key={k.id} className="fade-up"
+            style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '10px', padding: '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', animationDelay: `${i * 0.04}s`, transition: 'border-color 0.15s' }}
+            onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border-lit)'}
+            onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+              <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'var(--accent-glow)', border: '1px solid var(--border-lit)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', flexShrink: 0 }}>◎</div>
+              <div style={{ minWidth: 0 }}>
+                <p style={{ fontFamily: 'var(--sans)', fontWeight: '600', fontSize: '13px', color: 'var(--text-1)', margin: '0 0 3px' }}>{k.name}</p>
+                <p style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text-3)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{k.key.slice(0, 20)}••••••••••••</p>
               </div>
             </div>
-            <div className="flex items-center gap-3 shrink-0">
-              <span className="text-gray-600 text-xs">{new Date(k.created_at).toLocaleDateString()}</span>
-              <button
-                onClick={() => copyKey(k.key)}
-                className="text-gray-400 hover:text-white transition-colors"
-                title="Copy key"
-              >
-                {copied === k.key ? <Check size={16} className="text-green-400" /> : <Copy size={16} />}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
+              <span style={{ fontFamily: 'var(--mono)', fontSize: '10px', color: 'var(--text-3)' }}>{new Date(k.created_at).toLocaleDateString()}</span>
+              <button onClick={() => copyKey(k.key)}
+                style={{ background: copied === k.key ? 'rgba(0,255,136,0.1)' : 'var(--bg-base)', border: `1px solid ${copied === k.key ? 'rgba(0,255,136,0.3)' : 'var(--border)'}`, color: copied === k.key ? 'var(--green)' : 'var(--text-2)', borderRadius: '6px', padding: '5px 12px', fontFamily: 'var(--mono)', fontSize: '10px', fontWeight: '700', cursor: 'pointer', transition: 'all 0.15s', letterSpacing: '0.06em' }}>
+                {copied === k.key ? '✓ COPIED' : 'COPY'}
               </button>
             </div>
           </div>
@@ -90,14 +86,26 @@ export default function APIKeys() {
 
       {/* Agent setup instructions */}
       {keys.length > 0 && (
-        <div className="mt-8 bg-gray-900 border border-gray-800 rounded-xl p-5">
-          <p className="text-sm font-medium mb-3">Agent setup</p>
-          <div className="bg-gray-950 rounded-lg p-3 font-mono text-xs text-gray-300 space-y-1">
-            <p><span className="text-green-400">pip install</span> psutil httpx</p>
-            <p><span className="text-yellow-400">set</span> SENTINEL_API_KEY=<span className="text-brand-500">{keys[0]?.key}</span></p>
-            <p><span className="text-yellow-400">set</span> SENTINEL_API_URL=<span className="text-brand-500">http://your-ec2-ip:8000/api/metrics/ingest</span></p>
-            <p><span className="text-yellow-400">set</span> SENTINEL_SERVER_NAME=<span className="text-brand-500">your-server-name</span></p>
-            <p><span className="text-green-400">python</span> agent.py</p>
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '24px' }} className="fade-up">
+          <p style={{ fontFamily: 'var(--sans)', fontWeight: '600', fontSize: '13px', color: 'var(--text-1)', margin: '0 0 14px' }}>Agent Setup</p>
+          <div style={{ background: 'var(--bg-base)', border: '1px solid var(--border)', borderRadius: '8px', padding: '16px 18px', fontFamily: 'var(--mono)', fontSize: '12px', lineHeight: 2.0 }}>
+            {[
+              { color: 'var(--text-3)', text: '# Install dependencies' },
+              { color: 'var(--green)', prefix: '$ ', text: 'pip install psutil httpx' },
+              { color: 'var(--text-3)', text: '' },
+              { color: 'var(--text-3)', text: '# Set environment variables' },
+              { color: 'var(--yellow)', text: `SENTINEL_API_KEY=${keys[0]?.key?.slice(0, 16)}...` },
+              { color: 'var(--yellow)', text: 'SENTINEL_API_URL=http://your-ec2-ip:8000/api/metrics/ingest' },
+              { color: 'var(--yellow)', text: 'SENTINEL_SERVER_NAME=your-server-name' },
+              { color: 'var(--text-3)', text: '' },
+              { color: 'var(--text-3)', text: '# Run the agent' },
+              { color: 'var(--green)', prefix: '$ ', text: 'python agent.py' },
+            ].map((line, i) => (
+              <div key={i} style={{ color: line.color }}>
+                {line.prefix && <span style={{ color: 'var(--accent)' }}>{line.prefix}</span>}
+                {line.text}
+              </div>
+            ))}
           </div>
         </div>
       )}

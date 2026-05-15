@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getIncidents } from '../lib/api'
-import { AlertTriangle, CheckCircle, Clock } from 'lucide-react'
 
-const STATUS_COLOR = {
-  open:     'text-red-400 bg-red-950',
-  resolved: 'text-green-400 bg-green-950',
-  ignored:  'text-gray-400 bg-gray-800',
+const STATUS = {
+  open:     { color: 'var(--red)',    bg: 'rgba(255,68,68,0.08)',    border: 'rgba(255,68,68,0.25)',    label: 'OPEN' },
+  resolved: { color: 'var(--green)',  bg: 'rgba(0,255,136,0.08)',    border: 'rgba(0,255,136,0.25)',    label: 'RESOLVED' },
+  ignored:  { color: 'var(--text-3)', bg: 'rgba(61,90,122,0.08)',    border: 'rgba(61,90,122,0.25)',    label: 'IGNORED' },
 }
 
 export default function Incidents() {
@@ -24,64 +23,65 @@ export default function Incidents() {
   }, [filter])
 
   return (
-    <div className="flex-1 p-8 overflow-y-auto">
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-xl font-bold">Incidents</h2>
-        <div className="flex gap-2">
-          {['', 'open', 'resolved'].map(s => (
-            <button
-              key={s}
-              onClick={() => setFilter(s)}
-              className={`px-3 py-1.5 rounded-lg text-sm transition-colors
-                ${filter === s
-                  ? 'bg-brand-500 text-white'
-                  : 'bg-gray-800 text-gray-400 hover:text-white'}`}
-            >
-              {s === '' ? 'All' : s.charAt(0).toUpperCase() + s.slice(1)}
-            </button>
+    <div style={{ flex: 1, padding: '32px', overflowY: 'auto', background: 'var(--bg-base)' }}>
+
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '28px' }}>
+        <div>
+          <h1 style={{ fontFamily: 'var(--sans)', fontWeight: '800', fontSize: '22px', color: 'var(--text-1)', margin: '0 0 4px', letterSpacing: '-0.02em' }}>Incidents</h1>
+          <p style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text-3)', margin: 0 }}>{incidents.length} TOTAL EVENTS</p>
+        </div>
+
+        <div style={{ display: 'flex', gap: '6px' }}>
+          {[['', 'ALL'], ['open', 'OPEN'], ['resolved', 'RESOLVED']].map(([val, lbl]) => (
+            <button key={val} onClick={() => setFilter(val)} style={{
+              background: filter === val ? 'var(--accent-glow)' : 'var(--bg-card)',
+              border: `1px solid ${filter === val ? 'var(--border-lit)' : 'var(--border)'}`,
+              color: filter === val ? 'var(--accent)' : 'var(--text-2)',
+              borderRadius: '8px', padding: '7px 14px',
+              fontFamily: 'var(--mono)', fontSize: '11px', fontWeight: '700',
+              cursor: 'pointer', transition: 'all 0.15s', letterSpacing: '0.06em',
+            }}>{lbl}</button>
           ))}
         </div>
       </div>
 
-      {loading && <p className="text-gray-500 text-sm">Loading...</p>}
-
-      {!loading && incidents.length === 0 && (
-        <div className="text-center py-20 text-gray-600">
-          <CheckCircle size={40} className="mx-auto mb-3 text-green-800" />
-          <p>No incidents found</p>
+      {loading && (
+        <div style={{ textAlign: 'center', padding: '60px', fontFamily: 'var(--mono)', fontSize: '12px', color: 'var(--text-3)' }}>
+          LOADING<span className="blink">_</span>
         </div>
       )}
 
-      <div className="flex flex-col gap-3">
-        {incidents.map(inc => (
-          <div
-            key={inc.id}
-            onClick={() => navigate(`/incidents/${inc.id}`)}
-            className="bg-gray-900 border border-gray-800 rounded-xl p-5 cursor-pointer hover:border-gray-600 transition-colors"
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex items-start gap-3">
-                <AlertTriangle size={18} className="text-red-400 mt-0.5 shrink-0" />
-                <div>
-                  <p className="font-medium text-sm">{inc.title}</p>
-                  <p className="text-gray-500 text-xs mt-1">{inc.server_name}</p>
-                  {inc.description && (
-                    <p className="text-gray-400 text-xs mt-1 line-clamp-1">{inc.description}</p>
-                  )}
+      {!loading && incidents.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '80px 0' }}>
+          <div style={{ fontSize: '40px', marginBottom: '12px', opacity: 0.3 }}>◎</div>
+          <p style={{ fontFamily: 'var(--mono)', fontSize: '12px', color: 'var(--text-3)' }}>NO INCIDENTS FOUND</p>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        {incidents.map((inc, i) => {
+          const s = STATUS[inc.status] || STATUS.ignored
+          return (
+            <div key={inc.id} onClick={() => navigate(`/incidents/${inc.id}`)}
+              style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px', cursor: 'pointer', transition: 'all 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', animationDelay: `${i * 0.03}s` }}
+              className="fade-up"
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-lit)'; e.currentTarget.style.transform = 'translateX(4px)' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.transform = 'translateX(0)' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: 0 }}>
+                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: s.color, boxShadow: `0 0 8px ${s.color}`, flexShrink: 0 }} />
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ fontFamily: 'var(--sans)', fontWeight: '600', fontSize: '14px', color: 'var(--text-1)', margin: '0 0 4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{inc.title}</p>
+                  <p style={{ fontFamily: 'var(--mono)', fontSize: '11px', color: 'var(--text-3)', margin: 0 }}>{inc.server_name} · {new Date(inc.created_at).toLocaleString()}</p>
                 </div>
               </div>
-              <div className="flex flex-col items-end gap-2 shrink-0">
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLOR[inc.status]}`}>
-                  {inc.status}
-                </span>
-                <span className="text-gray-600 text-xs flex items-center gap-1">
-                  <Clock size={11} />
-                  {new Date(inc.created_at).toLocaleString()}
-                </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
+                <span style={{ fontFamily: 'var(--mono)', fontSize: '10px', fontWeight: '700', color: s.color, background: s.bg, border: `1px solid ${s.border}`, padding: '3px 10px', borderRadius: '4px', letterSpacing: '0.06em' }}>{s.label}</span>
+                <span style={{ color: 'var(--text-3)', fontSize: '16px' }}>›</span>
               </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )
